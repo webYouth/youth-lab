@@ -1,0 +1,29 @@
+// Blog gRPC service definition.
+//
+// Go generation example:
+// protoc --proto_path=./proto --go_out=./gen/blogpb --go_opt=paths=source_relative --go-grpc_out=./gen/blogpb --go-grpc_opt=paths=source_relative blog.proto
+//
+// Node generation example (optional if you use runtime proto-loader):
+// protoc --proto_path=./proto --js_out=import_style=commonjs,binary:./gen/node --grpc_out=grpc_js:./gen/node blog.proto
+syntax = "proto3";
+
+package blog.v1;
+
+option go_package = "youthlab/server/gen/blogpb;blogpb";
+
+service BlogService {
+  rpc GetPosts(GetPostsRequest) returns (GetPostsResponse);
+}
+
+message GetPostsRequest {}
+
+message Post {
+  int32 id = 1;
+  string title = 2;
+  string content = 3;
+  string created_at = 4;
+}
+
+message GetPostsResponse {
+  repeated Post posts = 1;
+}
