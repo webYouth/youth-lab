@@ -21,13 +21,14 @@ env:
   NAMESPACE: ${{ secrets.ALIYUN_ACR_NAMESPACE }}
   SERVER_IMAGE: ${{ secrets.ALIYUN_ACR_REGISTRY }}/${{ secrets.ALIYUN_ACR_NAMESPACE }}/youth-lab-server
   WEB_IMAGE: ${{ secrets.ALIYUN_ACR_REGISTRY }}/${{ secrets.ALIYUN_ACR_NAMESPACE }}/youth-lab-web
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Login to Aliyun ACR
         run: |
