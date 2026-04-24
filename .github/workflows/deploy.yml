@@ -1,0 +1,57 @@
+# CI/CD workflow: GitHub -> ACR -> ECS
+# Trigger: push to main branch.
+#
+# Required GitHub repository Secrets (Settings -> Secrets and variables -> Actions):
+# - ALIYUN_ACR_REGISTRY: ACR registry domain, e.g. registry.cn-hangzhou.aliyuncs.com
+# - ALIYUN_ACR_NAMESPACE: ACR namespace, e.g. webyouth
+# - ALIYUN_ACR_USERNAME: ACR login username
+# - ALIYUN_ACR_PASSWORD: ACR login password/token
+# - ECS_HOST: ECS public IP or domain
+# - ECS_USER: ECS SSH username
+# - ECS_SSH_PRIVATE_KEY: Private key content used by SSH deploy step
+name: Deploy to ACR and ECS
+
+on:
+  push:
+    branches:
+      - main
+
+env:
+  REGISTRY: ${{ secrets.ALIYUN_ACR_REGISTRY }}
+  NAMESPACE: ${{ secrets.ALIYUN_ACR_NAMESPACE }}
+  SERVER_IMAGE: ${{ secrets.ALIYUN_ACR_REGISTRY }}/${{ secrets.ALIYUN_ACR_NAMESPACE }}/youth-lab-server
+  WEB_IMAGE: ${{ secrets.ALIYUN_ACR_REGISTRY }}/${{ secrets.ALIYUN_ACR_NAMESPACE }}/youth-lab-web
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Login to Aliyun ACR
+        run: |
+          echo "${{ secrets.ALIYUN_ACR_PASSWORD }}" | docker login -u "${{ secrets.ALIYUN_ACR_USERNAME }}" --password-stdin "$REGISTRY"
+
+      - name: Build and push server image
+        run: |
+          docker build -t "$SERVER_IMAGE:latest" -f server/Dockerfile ./server
+          docker push "$SERVER_IMAGE:latest"
+
+      - name: Build and push web image
+        run: |
+          docker build -t "$WEB_IMAGE:latest" -f web/Dockerfile ./web
+          docker push "$WEB_IMAGE:latest"
+
+      - name: Deploy to ECS via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.ECS_HOST }}
+          username: ${{ secrets.ECS_USER }}
+          key: ${{ secrets.ECS_SSH_PRIVATE_KEY }}
+          script: |
+            cd /opt/youth-lab
+            docker login -u "${{ secrets.ALIYUN_ACR_USERNAME }}" -p "${{ secrets.ALIYUN_ACR_PASSWORD }}" "$REGISTRY"
+            docker-compose -f docker-compose.prod.yml pull
+            docker-compose -f docker-compose.prod.yml up -d --remove-orphans
+            docker image prune -f
