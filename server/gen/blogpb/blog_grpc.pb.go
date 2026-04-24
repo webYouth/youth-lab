@@ -1,4 +1,4 @@
-// Code generated placeholder for blog gRPC bindings.
+// Package blogpb Code generated placeholder for blog gRPC bindings.
 // Replace this file by running protoc as documented in proto/blog.proto.
 package blogpb
 
