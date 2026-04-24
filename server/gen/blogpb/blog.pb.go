@@ -1,4 +1,4 @@
-// Code generated placeholder for blog.proto.
+// Package blogpb Code generated placeholder for blog.proto.
 // Replace this file by running protoc as documented in proto/blog.proto.
 package blogpb
 
