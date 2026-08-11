@@ -2,17 +2,24 @@
 # Trigger: push to main branch.
 #
 # Required GitHub repository Secrets (Settings -> Secrets and variables -> Actions):
-# - ALIYUN_ACR_REGISTRY: ACR registry domain, e.g. registry.cn-hangzhou.aliyuncs.com
+# - ALIYUN_ACR_REGISTRY: ACR registry domain
 # - ALIYUN_ACR_NAMESPACE: ACR namespace, e.g. webyouth
 # - ALIYUN_ACR_USERNAME: ACR login username
 # - ALIYUN_ACR_PASSWORD: ACR login password/token
 # - ECS_HOST: ECS public IP or domain
 # - ECS_USER: ECS SSH username
 # - ECS_SSH_PRIVATE_KEY: Private key content used by SSH deploy step
+# - SMTP_USER: QQ mailbox account, e.g. webyouth@qq.com
+# - SMTP_PASS: QQ mailbox SMTP authorization code (not login password)
 #
-# Optional (for first-time SMTP bootstrap via deploy script):
-# - SMTP_USER / SMTP_PASS / MAIL_TO
-# Prefer keeping SMTP secrets only in ECS /opt/youth-lab/.env
+# Optional SMTP Secrets (defaults applied if unset):
+# - SMTP_HOST (default: smtp.qq.com)
+# - SMTP_PORT (default: 465)
+# - MAIL_FROM (default: SMTP_USER or webyouth@qq.com)
+# - MAIL_TO   (default: webyouth@qq.com)
+#
+# Each deploy regenerates /opt/youth-lab/.env on ECS from these secrets.
+# Do NOT commit real SMTP credentials into the repository.
 name: Deploy to ACR and ECS
 
 on:
@@ -26,6 +33,12 @@ env:
   SERVER_IMAGE: ${{ secrets.ALIYUN_ACR_REGISTRY }}/${{ secrets.ALIYUN_ACR_NAMESPACE }}/youth-lab-server
   WEB_IMAGE: ${{ secrets.ALIYUN_ACR_REGISTRY }}/${{ secrets.ALIYUN_ACR_NAMESPACE }}/youth-lab-web
   KL8_IMAGE: ${{ secrets.ALIYUN_ACR_REGISTRY }}/${{ secrets.ALIYUN_ACR_NAMESPACE }}/youth-lab-kl8
+  SMTP_HOST: ${{ secrets.SMTP_HOST }}
+  SMTP_PORT: ${{ secrets.SMTP_PORT }}
+  SMTP_USER: ${{ secrets.SMTP_USER }}
+  SMTP_PASS: ${{ secrets.SMTP_PASS }}
+  MAIL_FROM: ${{ secrets.MAIL_FROM }}
+  MAIL_TO: ${{ secrets.MAIL_TO }}
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
@@ -80,7 +93,7 @@ jobs:
           host: ${{ secrets.ECS_HOST }}
           username: ${{ secrets.ECS_USER }}
           key: ${{ secrets.ECS_SSH_PRIVATE_KEY }}
-          envs: REGISTRY,SERVER_IMAGE,WEB_IMAGE,KL8_IMAGE
+          envs: REGISTRY,SERVER_IMAGE,WEB_IMAGE,KL8_IMAGE,SMTP_HOST,SMTP_PORT,SMTP_USER,SMTP_PASS,MAIL_FROM,MAIL_TO
           # First deploy may need a long time to pull multiple ACR images.
           timeout: 2m
           command_timeout: 40m
@@ -96,16 +109,35 @@ jobs:
               cp -f kl8/tickets.example.yaml kl8/tickets.yaml
               echo "created kl8/tickets.yaml from example; please update daily numbers"
             fi
-            if [ ! -f .env ]; then
-              printf '%s\n' \
-                'SMTP_HOST=smtp.qq.com' \
-                'SMTP_PORT=465' \
-                'SMTP_USER=' \
-                'SMTP_PASS=' \
-                'MAIL_FROM=webyouth@qq.com' \
-                'MAIL_TO=webyouth@qq.com' > .env
-              echo "created empty .env; fill SMTP_USER/SMTP_PASS before expecting emails"
+
+            SMTP_HOST_VALUE="${SMTP_HOST:-smtp.qq.com}"
+            SMTP_PORT_VALUE="${SMTP_PORT:-465}"
+            SMTP_USER_VALUE="${SMTP_USER:-webyouth@qq.com}"
+            SMTP_PASS_VALUE="${SMTP_PASS:-}"
+            MAIL_FROM_VALUE="${MAIL_FROM:-$SMTP_USER_VALUE}"
+            MAIL_TO_VALUE="${MAIL_TO:-webyouth@qq.com}"
+
+            if [ -z "$SMTP_PASS_VALUE" ]; then
+              echo "ERROR: SMTP_PASS secret is empty. Set GitHub Secret SMTP_PASS (QQ authorization code)."
+              exit 1
             fi
+
+            # Always regenerate production env from CI secrets.
+            umask 077
+            {
+              printf 'SERVER_IMAGE=%s\n' "$SERVER_IMAGE"
+              printf 'WEB_IMAGE=%s\n' "$WEB_IMAGE"
+              printf 'KL8_IMAGE=%s\n' "$KL8_IMAGE"
+              printf 'SMTP_HOST=%s\n' "$SMTP_HOST_VALUE"
+              printf 'SMTP_PORT=%s\n' "$SMTP_PORT_VALUE"
+              printf 'SMTP_USER=%s\n' "$SMTP_USER_VALUE"
+              printf 'SMTP_PASS=%s\n' "$SMTP_PASS_VALUE"
+              printf 'MAIL_FROM=%s\n' "$MAIL_FROM_VALUE"
+              printf 'MAIL_TO=%s\n' "$MAIL_TO_VALUE"
+            } > /opt/youth-lab/.env
+            chmod 600 /opt/youth-lab/.env
+            echo "wrote /opt/youth-lab/.env from GitHub Secrets"
+
             export SERVER_IMAGE="$SERVER_IMAGE"
             export WEB_IMAGE="$WEB_IMAGE"
             export KL8_IMAGE="$KL8_IMAGE"
@@ -115,10 +147,10 @@ jobs:
             else
               COMPOSE="docker compose"
             fi
-            $COMPOSE -f docker-compose.prod.yml pull
-            $COMPOSE -f docker-compose.prod.yml up -d --remove-orphans
+            $COMPOSE --env-file .env -f docker-compose.prod.yml pull
+            $COMPOSE --env-file .env -f docker-compose.prod.yml up -d --remove-orphans
             # Ensure latest nginx config is applied (volume mount does not auto-reload).
-            $COMPOSE -f docker-compose.prod.yml exec -T nginx nginx -s reload || \
-              $COMPOSE -f docker-compose.prod.yml up -d --force-recreate nginx
+            $COMPOSE --env-file .env -f docker-compose.prod.yml exec -T nginx nginx -s reload || \
+              $COMPOSE --env-file .env -f docker-compose.prod.yml up -d --force-recreate nginx
             docker image prune -f
-            $COMPOSE -f docker-compose.prod.yml ps
+            $COMPOSE --env-file .env -f docker-compose.prod.yml ps
