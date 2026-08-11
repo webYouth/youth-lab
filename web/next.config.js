@@ -2,6 +2,7 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   basePath: "/blog",
+  trailingSlash: true,
   output: "standalone"
 };
 
