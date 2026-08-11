@@ -9,7 +9,11 @@ import (
 
 // RegisterHealthRoutes registers health-check endpoints.
 func RegisterHealthRoutes(router *gin.Engine) {
-	router.GET("/health", func(c *gin.Context) {
+	health := func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"status": "ok"})
-	})
+	}
+	// Direct path used inside docker network / local.
+	router.GET("/health", health)
+	// Compatibility path in case nginx does not strip /api prefix.
+	router.GET("/api/health", health)
 }
