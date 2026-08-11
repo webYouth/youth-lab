@@ -3,6 +3,10 @@
 # 2) Put this file and nginx/default.conf into /opt/youth-lab
 # 3) Create directories for TLS and ACME:
 #    mkdir -p ssl certbot/www
+# 4) Prepare 快乐8 checker (internal only, no public ports):
+#    mkdir -p kl8
+#    cp kl8/tickets.example.yaml kl8/tickets.yaml   # then edit daily numbers
+#    create .env with SMTP_USER / SMTP_PASS / MAIL_TO
 
 version: "3.8"
 
@@ -40,6 +44,23 @@ services:
       - GRPC_SERVER_ADDR=server:50051
     depends_on:
       - server
+    networks:
+      - youth-lab-net
+
+  # Internal-only Happy8 checker. No ports published.
+  kl8:
+    image: ${KL8_IMAGE:-registry.cn-hangzhou.aliyuncs.com/webyouth/youth-lab-kl8}:latest
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      - TZ=Asia/Shanghai
+      - KL8_TICKETS_FILE=/data/tickets.yaml
+      - KL8_START_HOUR=22
+      - KL8_RETRY_MINUTES=5
+      - MAIL_TO=${MAIL_TO:-webyouth@qq.com}
+    volumes:
+      - ./kl8/tickets.yaml:/data/tickets.yaml:ro
     networks:
       - youth-lab-net
 
