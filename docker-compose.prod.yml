@@ -25,7 +25,7 @@ services:
       - youth-lab-net
 
   server:
-    image: ${SERVER_IMAGE:-registry.cn-hangzhou.aliyuncs.com/webyouth/youth-lab-server}:latest
+    image: ${SERVER_IMAGE:-crpi-hkob27jgcmdlnekv.cn-shenzhen.personal.cr.aliyuncs.com/webyouth/youth-lab-server}:latest
     expose:
       - "50051"
       - "8080"
@@ -35,7 +35,7 @@ services:
       - youth-lab-net
 
   web:
-    image: ${WEB_IMAGE:-registry.cn-hangzhou.aliyuncs.com/webyouth/youth-lab-web}:latest
+    image: ${WEB_IMAGE:-crpi-hkob27jgcmdlnekv.cn-shenzhen.personal.cr.aliyuncs.com/webyouth/youth-lab-web}:latest
     expose:
       - "3000"
     environment:
@@ -47,7 +47,7 @@ services:
 
   # Internal-only Happy8 checker. No ports published.
   kl8:
-    image: ${KL8_IMAGE:-registry.cn-hangzhou.aliyuncs.com/webyouth/youth-lab-kl8}:latest
+    image: ${KL8_IMAGE:-crpi-hkob27jgcmdlnekv.cn-shenzhen.personal.cr.aliyuncs.com/webyouth/youth-lab-kl8}:latest
     restart: unless-stopped
     env_file:
       - .env
