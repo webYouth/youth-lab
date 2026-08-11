@@ -27,6 +27,9 @@ go.work.sum
 # env file
 .env
 
+# Happy8 personal tickets (keep private on ECS)
+kl8/tickets.yaml
+
 # Editor/IDE
 # .idea/
 # .vscode/
@@ -35,3 +38,11 @@ go.work.sum
 # node
 node_modules
 .pnpm-store
+
+# Next.js
+web/.next
+web/node_modules
+
+# Go build artifacts
+server/tmp
+kl8/tmp

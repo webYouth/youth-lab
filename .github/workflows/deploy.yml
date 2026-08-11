@@ -9,6 +9,10 @@
 # - ECS_HOST: ECS public IP or domain
 # - ECS_USER: ECS SSH username
 # - ECS_SSH_PRIVATE_KEY: Private key content used by SSH deploy step
+#
+# Optional (for first-time SMTP bootstrap via deploy script):
+# - SMTP_USER / SMTP_PASS / MAIL_TO
+# Prefer keeping SMTP secrets only in ECS /opt/youth-lab/.env
 name: Deploy to ACR and ECS
 
 on:
@@ -21,6 +25,7 @@ env:
   NAMESPACE: ${{ secrets.ALIYUN_ACR_NAMESPACE }}
   SERVER_IMAGE: ${{ secrets.ALIYUN_ACR_REGISTRY }}/${{ secrets.ALIYUN_ACR_NAMESPACE }}/youth-lab-server
   WEB_IMAGE: ${{ secrets.ALIYUN_ACR_REGISTRY }}/${{ secrets.ALIYUN_ACR_NAMESPACE }}/youth-lab-web
+  KL8_IMAGE: ${{ secrets.ALIYUN_ACR_REGISTRY }}/${{ secrets.ALIYUN_ACR_NAMESPACE }}/youth-lab-kl8
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
@@ -44,14 +49,62 @@ jobs:
           docker build -t "$WEB_IMAGE:latest" -f web/Dockerfile ./web
           docker push "$WEB_IMAGE:latest"
 
-      - name: Deploy to ECS via SSH
+      - name: Build and push kl8 checker image
+        run: |
+          docker build -t "$KL8_IMAGE:latest" -f kl8/Dockerfile ./kl8
+          docker push "$KL8_IMAGE:latest"
+
+      - name: Prepare ECS directories
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.ECS_HOST }}
           username: ${{ secrets.ECS_USER }}
           key: ${{ secrets.ECS_SSH_PRIVATE_KEY }}
           script: |
+            mkdir -p /opt/youth-lab/nginx /opt/youth-lab/ssl /opt/youth-lab/certbot/www /opt/youth-lab/kl8
+
+      - name: Sync compose and nginx configs to ECS
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.ECS_HOST }}
+          username: ${{ secrets.ECS_USER }}
+          key: ${{ secrets.ECS_SSH_PRIVATE_KEY }}
+          source: "docker-compose.prod.yml,nginx/default.conf,kl8/tickets.example.yaml"
+          target: "/opt/youth-lab"
+          strip_components: 0
+          overwrite: true
+
+      - name: Deploy to ECS via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.ECS_HOST }}
+          username: ${{ secrets.ECS_USER }}
+          key: ${{ secrets.ECS_SSH_PRIVATE_KEY }}
+          envs: REGISTRY,SERVER_IMAGE,WEB_IMAGE,KL8_IMAGE
+          script: |
+            set -e
             cd /opt/youth-lab
+            mkdir -p nginx ssl certbot/www kl8
+            if [ -f tickets.example.yaml ] && [ ! -f kl8/tickets.example.yaml ]; then
+              mv tickets.example.yaml kl8/tickets.example.yaml
+            fi
+            if [ ! -f kl8/tickets.yaml ]; then
+              cp -f kl8/tickets.example.yaml kl8/tickets.yaml
+              echo "created kl8/tickets.yaml from example; please update daily numbers"
+            fi
+            if [ ! -f .env ]; then
+              printf '%s\n' \
+                'SMTP_HOST=smtp.qq.com' \
+                'SMTP_PORT=465' \
+                'SMTP_USER=' \
+                'SMTP_PASS=' \
+                'MAIL_FROM=webyouth@qq.com' \
+                'MAIL_TO=webyouth@qq.com' > .env
+              echo "created empty .env; fill SMTP_USER/SMTP_PASS before expecting emails"
+            fi
+            export SERVER_IMAGE="$SERVER_IMAGE"
+            export WEB_IMAGE="$WEB_IMAGE"
+            export KL8_IMAGE="$KL8_IMAGE"
             docker login -u "${{ secrets.ALIYUN_ACR_USERNAME }}" -p "${{ secrets.ALIYUN_ACR_PASSWORD }}" "$REGISTRY"
             docker-compose -f docker-compose.prod.yml pull
             docker-compose -f docker-compose.prod.yml up -d --remove-orphans
