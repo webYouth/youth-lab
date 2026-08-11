@@ -8,8 +8,6 @@
 #    cp kl8/tickets.example.yaml kl8/tickets.yaml   # then edit daily numbers
 #    create .env with SMTP_USER / SMTP_PASS / MAIL_TO
 
-version: "3.8"
-
 services:
   nginx:
     image: nginx:alpine

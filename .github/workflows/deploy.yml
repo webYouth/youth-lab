@@ -81,6 +81,10 @@ jobs:
           username: ${{ secrets.ECS_USER }}
           key: ${{ secrets.ECS_SSH_PRIVATE_KEY }}
           envs: REGISTRY,SERVER_IMAGE,WEB_IMAGE,KL8_IMAGE
+          # First deploy may need a long time to pull multiple ACR images.
+          timeout: 2m
+          command_timeout: 40m
+          script_stop: true
           script: |
             set -e
             cd /opt/youth-lab
@@ -105,7 +109,13 @@ jobs:
             export SERVER_IMAGE="$SERVER_IMAGE"
             export WEB_IMAGE="$WEB_IMAGE"
             export KL8_IMAGE="$KL8_IMAGE"
-            docker login -u "${{ secrets.ALIYUN_ACR_USERNAME }}" -p "${{ secrets.ALIYUN_ACR_PASSWORD }}" "$REGISTRY"
-            docker-compose -f docker-compose.prod.yml pull
-            docker-compose -f docker-compose.prod.yml up -d --remove-orphans
+            echo "${{ secrets.ALIYUN_ACR_PASSWORD }}" | docker login -u "${{ secrets.ALIYUN_ACR_USERNAME }}" --password-stdin "$REGISTRY"
+            if command -v docker-compose >/dev/null 2>&1; then
+              COMPOSE="docker-compose"
+            else
+              COMPOSE="docker compose"
+            fi
+            $COMPOSE -f docker-compose.prod.yml pull
+            $COMPOSE -f docker-compose.prod.yml up -d --remove-orphans
             docker image prune -f
+            $COMPOSE -f docker-compose.prod.yml ps
