@@ -140,13 +140,26 @@ Push to `main` triggers `.github/workflows/deploy.yml`:
 
 ### ECS bootstrap for Happy8 mail
 
+GitHub Actions will regenerate `/opt/youth-lab/.env` on every deploy from repository Secrets.
+
+Required Secrets:
+
+- `SMTP_USER` (e.g. `webyouth@qq.com`)
+- `SMTP_PASS` (QQ mailbox authorization code)
+
+Optional Secrets (defaults applied if empty):
+
+- `SMTP_HOST` = `smtp.qq.com`
+- `SMTP_PORT` = `465`
+- `MAIL_FROM` = `SMTP_USER`
+- `MAIL_TO` = `webyouth@qq.com`
+
+Also keep tickets file on ECS:
+
 ```bash
 mkdir -p /opt/youth-lab/kl8
 cp /opt/youth-lab/kl8/tickets.example.yaml /opt/youth-lab/kl8/tickets.yaml
 # edit /opt/youth-lab/kl8/tickets.yaml every day with your numbers
-
-cp .env.prod.example /opt/youth-lab/.env
-# fill SMTP_USER / SMTP_PASS (QQ mailbox authorization code)
 ```
 
 Required ACR repositories:
