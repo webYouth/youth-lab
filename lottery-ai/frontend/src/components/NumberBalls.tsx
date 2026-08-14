@@ -1,9 +1,10 @@
 import React from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
+import { Text } from 'react-native-paper';
 
 type Props = { numbers: number[]; color?: string };
 
-export default function NumberBalls({ numbers, color = '#2563eb' }: Props) {
+export default function NumberBalls({ numbers, color = '#B3261E' }: Props) {
   return (
     <View style={styles.wrap}>
       {(numbers || []).map((n, idx) => (
@@ -18,11 +19,16 @@ export default function NumberBalls({ numbers, color = '#2563eb' }: Props) {
 const styles = StyleSheet.create({
   wrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   ball: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     alignItems: 'center',
     justifyContent: 'center',
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOpacity: 0.18,
+    shadowRadius: 2,
+    shadowOffset: { width: 0, height: 1 },
   },
-  text: { color: '#fff', fontWeight: '700', fontSize: 12 },
+  text: { color: '#fff', fontWeight: '700', fontSize: 13, lineHeight: 16 },
 });

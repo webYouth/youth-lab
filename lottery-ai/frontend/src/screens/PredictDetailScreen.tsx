@@ -1,41 +1,54 @@
 import React from 'react';
-import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { useRoute } from '@react-navigation/native';
+import { useNavigation, useRoute } from '@react-navigation/native';
 import { useQuery } from '@tanstack/react-query';
+import { Card, Text } from 'react-native-paper';
 import { fetchToday } from '../api/client';
+import type { Prediction } from '../types';
 import DisclaimerBanner from '../components/DisclaimerBanner';
 import NumberBalls from '../components/NumberBalls';
+import QueryState from '../components/QueryState';
+import Screen, { SectionTitle } from '../components/Screen';
 
 export default function PredictDetailScreen() {
+  const nav = useNavigation<any>();
   const route = useRoute<any>();
   const lotteryCode = route.params?.lotteryCode || 'DLT';
-  const q = useQuery({ queryKey: ['today', lotteryCode], queryFn: () => fetchToday(lotteryCode) });
+  const q = useQuery({
+    queryKey: ['today', lotteryCode],
+    queryFn: (): Promise<{ final: Prediction | null; models: Prediction[] }> => fetchToday(lotteryCode),
+  });
   const finalPred = q.data?.final;
   const models = q.data?.models || [];
 
   return (
-    <ScrollView contentContainerStyle={styles.container}>
+    <Screen title="预测详情" onBack={() => nav.goBack()}>
       <DisclaimerBanner />
-      {q.isLoading ? <ActivityIndicator /> : null}
-      <Text style={styles.title}>最终推荐</Text>
-      <NumberBalls numbers={finalPred?.predicted_numbers?.numbers || []} />
-      <Text style={styles.reason}>{finalPred?.reason || '暂无理由'}</Text>
-      <Text style={styles.title}>各模型预测</Text>
-      {models.map((m) => (
-        <View key={m.id} style={styles.card}>
-          <Text style={styles.cardTitle}>{m.model_code} · 置信度 {m.confidence}</Text>
-          <NumberBalls numbers={m.predicted_numbers?.numbers || []} color="#059669" />
-          <Text style={styles.reason}>{m.reason || (m.success ? '' : m.error_message)}</Text>
-        </View>
-      ))}
-    </ScrollView>
+      <QueryState loading={q.isLoading} error={q.error} onRetry={() => q.refetch()} />
+      {!q.isLoading && !q.isError ? (
+        <>
+          <SectionTitle>最终推荐</SectionTitle>
+          <Card mode="elevated">
+            <Card.Content>
+              <NumberBalls numbers={finalPred?.predicted_numbers?.numbers || []} />
+              <Text variant="bodyMedium" style={{ marginTop: 8 }}>
+                {finalPred?.reason || '暂无理由'}
+              </Text>
+            </Card.Content>
+          </Card>
+          <SectionTitle>各模型预测</SectionTitle>
+          {models.map((m: Prediction) => (
+            <Card key={m.id} mode="contained">
+              <Card.Title title={m.model_code} subtitle={`置信度 ${m.confidence}`} />
+              <Card.Content>
+                <NumberBalls numbers={m.predicted_numbers?.numbers || []} color="#1565C0" />
+                <Text variant="bodyMedium" style={{ marginTop: 8 }}>
+                  {m.reason || (m.success ? '' : m.error_message)}
+                </Text>
+              </Card.Content>
+            </Card>
+          ))}
+        </>
+      ) : null}
+    </Screen>
   );
 }
-
-const styles = StyleSheet.create({
-  container: { padding: 16, backgroundColor: '#0f172a', minHeight: '100%', gap: 10 },
-  title: { color: '#fff', fontSize: 18, fontWeight: '700', marginTop: 8 },
-  reason: { color: '#94a3b8', lineHeight: 20 },
-  card: { backgroundColor: '#111827', borderRadius: 12, padding: 12, gap: 8 },
-  cardTitle: { color: '#e2e8f0', fontWeight: '600' },
-});

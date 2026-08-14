@@ -1,48 +1,39 @@
 import React, { useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
+import { Card, Text } from 'react-native-paper';
 import { fetchDraws } from '../api/client';
+import type { DrawResult } from '../types';
 import DisclaimerBanner from '../components/DisclaimerBanner';
+import LotteryChips from '../components/LotteryChips';
 import NumberBalls from '../components/NumberBalls';
+import QueryState from '../components/QueryState';
+import Screen from '../components/Screen';
 
 export default function HistoryScreen() {
   const [code, setCode] = useState('DLT');
-  const q = useQuery({ queryKey: ['draws', code], queryFn: () => fetchDraws(code, 1) });
+  const q = useQuery({ queryKey: ['draws', code], queryFn: (): Promise<{ list: DrawResult[]; total: number }> => fetchDraws(code, 1) });
 
   return (
-    <ScrollView contentContainerStyle={styles.container}>
-      <Text style={styles.title}>历史开奖</Text>
+    <Screen title="历史开奖">
       <DisclaimerBanner />
-      <View style={styles.row}>
-        {['DLT', 'P3', 'KL8'].map((c) => (
-          <Pressable key={c} onPress={() => setCode(c)} style={[styles.chip, code === c && styles.chipActive]}>
-            <Text style={styles.chipText}>{c}</Text>
-          </Pressable>
-        ))}
-      </View>
-      {q.isLoading ? <ActivityIndicator /> : null}
-      {(q.data?.list || []).map((d) => {
+      <LotteryChips value={code} onChange={setCode} />
+      <QueryState loading={q.isLoading} error={q.error} onRetry={() => q.refetch()} />
+      {(q.data?.list || []).map((d: DrawResult) => {
         const nums = d.result?.numbers || d.result?.digits || d.result?.front || [];
         const back = d.result?.back || [];
         return (
-          <View key={d.id} style={styles.card}>
-            <Text style={styles.meta}>{d.issue} · {String(d.draw_date).slice(0, 10)}</Text>
-            <NumberBalls numbers={nums} />
-            {back.length ? <NumberBalls numbers={back} color="#dc2626" /> : null}
-          </View>
+          <Card key={d.id} mode="contained">
+            <Card.Title title={`第 ${d.issue} 期`} subtitle={String(d.draw_date).slice(0, 10)} />
+            <Card.Content>
+              <NumberBalls numbers={nums} />
+              {back.length ? <NumberBalls numbers={back} color="#1565C0" /> : null}
+            </Card.Content>
+          </Card>
         );
       })}
-    </ScrollView>
+      {!q.isLoading && !q.isError && !(q.data?.list || []).length ? (
+        <Text variant="bodyMedium">暂无开奖记录</Text>
+      ) : null}
+    </Screen>
   );
 }
-
-const styles = StyleSheet.create({
-  container: { padding: 16, paddingTop: 56, backgroundColor: '#0f172a', minHeight: '100%', gap: 10 },
-  title: { color: '#fff', fontSize: 24, fontWeight: '700' },
-  row: { flexDirection: 'row', gap: 8 },
-  chip: { backgroundColor: '#1e293b', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 16 },
-  chipActive: { backgroundColor: '#2563eb' },
-  chipText: { color: '#fff' },
-  card: { backgroundColor: '#111827', borderRadius: 12, padding: 12, gap: 8 },
-  meta: { color: '#94a3b8' },
-});
