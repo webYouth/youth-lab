@@ -1,0 +1,149 @@
+// Package controller HTTP API。
+package controller
+
+import (
+	"net/http"
+	"strconv"
+	"time"
+
+	"github.com/gin-gonic/gin"
+
+	"youthlab/lottery-ai/internal/consts"
+	"youthlab/lottery-ai/internal/service/lottery"
+	"youthlab/lottery-ai/internal/service/predictor"
+	"youthlab/lottery-ai/internal/store"
+)
+
+type API struct {
+	Store     *store.Store
+	Syncer    *lottery.Syncer
+	Predictor *predictor.Service
+}
+
+func OK(c *gin.Context, data any) {
+	c.JSON(http.StatusOK, gin.H{"code": 0, "message": "ok", "data": data, "disclaimer": consts.Disclaimer})
+}
+
+func Fail(c *gin.Context, code int, msg string) {
+	c.JSON(http.StatusOK, gin.H{"code": code, "message": msg, "data": nil, "disclaimer": consts.Disclaimer})
+}
+
+func (a *API) Health(c *gin.Context) {
+	OK(c, gin.H{"status": "ok", "disclaimer": consts.Disclaimer})
+}
+
+func (a *API) LotteryTypes(c *gin.Context) {
+	list, err := a.Store.ListLotteryTypes(c.Request.Context())
+	if err != nil {
+		Fail(c, 500, err.Error())
+		return
+	}
+	OK(c, list)
+}
+
+func (a *API) PredictionsToday(c *gin.Context) {
+	code := c.DefaultQuery("lottery_code", consts.LotteryDLT)
+	day := time.Now().In(loc())
+	list, err := a.Store.TodayPredictions(c.Request.Context(), code, day)
+	if err != nil {
+		Fail(c, 500, err.Error())
+		return
+	}
+	var final any
+	models := make([]any, 0)
+	for _, p := range list {
+		if p.FinalFlag {
+			final = p
+		} else {
+			models = append(models, p)
+		}
+	}
+	OK(c, gin.H{"final": final, "models": models, "disclaimer": consts.Disclaimer})
+}
+
+func (a *API) Predictions(c *gin.Context) {
+	code := c.DefaultQuery("lottery_code", consts.LotteryDLT)
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	pageSize, _ := strconv.Atoi(c.DefaultQuery("pageSize", "20"))
+	var datePtr *time.Time
+	if d := c.Query("date"); d != "" {
+		t, err := time.ParseInLocation("2006-01-02", d, loc())
+		if err == nil {
+			datePtr = &t
+		}
+	}
+	list, total, err := a.Store.ListPredictions(c.Request.Context(), code, datePtr, page, pageSize)
+	if err != nil {
+		Fail(c, 500, err.Error())
+		return
+	}
+	OK(c, gin.H{"list": list, "total": total, "page": page, "pageSize": pageSize})
+}
+
+func (a *API) DrawResults(c *gin.Context) {
+	code := c.DefaultQuery("lottery_code", consts.LotteryDLT)
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	pageSize, _ := strconv.Atoi(c.DefaultQuery("pageSize", "20"))
+	list, total, err := a.Store.ListDraws(c.Request.Context(), code, page, pageSize)
+	if err != nil {
+		Fail(c, 500, err.Error())
+		return
+	}
+	OK(c, gin.H{"list": list, "total": total, "page": page, "pageSize": pageSize})
+}
+
+func (a *API) Accuracy(c *gin.Context) {
+	code := c.DefaultQuery("lottery_code", consts.LotteryDLT)
+	list, err := a.Store.GetAccuracy(c.Request.Context(), code)
+	if err != nil {
+		Fail(c, 500, err.Error())
+		return
+	}
+	OK(c, gin.H{"list": list, "days": c.DefaultQuery("days", "30")})
+}
+
+func (a *API) AdminSync(c *gin.Context) {
+	code := c.Query("lottery_code")
+	var err error
+	if code == "" {
+		err = a.Syncer.SyncAll(c.Request.Context())
+	} else {
+		err = a.Syncer.SyncOne(c.Request.Context(), code)
+	}
+	if err != nil {
+		Fail(c, 500, err.Error())
+		return
+	}
+	OK(c, gin.H{"synced": true})
+}
+
+func (a *API) AdminGenerate(c *gin.Context) {
+	code := c.DefaultQuery("lottery_code", "")
+	codes := []string{consts.LotteryDLT, consts.LotteryP3, consts.LotteryKL8}
+	if code != "" {
+		codes = []string{code}
+	}
+	for _, x := range codes {
+		if err := a.Predictor.GenerateToday(c.Request.Context(), x); err != nil {
+			Fail(c, 500, err.Error())
+			return
+		}
+	}
+	OK(c, gin.H{"generated": true})
+}
+
+func (a *API) AdminEvaluate(c *gin.Context) {
+	if err := a.Predictor.EvaluateAll(c.Request.Context()); err != nil {
+		Fail(c, 500, err.Error())
+		return
+	}
+	OK(c, gin.H{"evaluated": true})
+}
+
+func loc() *time.Location {
+	l, err := time.LoadLocation("Asia/Shanghai")
+	if err != nil {
+		return time.FixedZone("CST", 8*3600)
+	}
+	return l
+}
