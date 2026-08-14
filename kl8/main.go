@@ -98,6 +98,19 @@ func runOnce(ticketsPath, apiURL string, allowAnyDay, dryRun bool) error {
 	body := formatSummary(summary)
 	log.Print(body)
 
+	subject := fmt.Sprintf("快乐8查奖 %s 合计%.2f元", draw.Code, summary.TotalPrize)
+	if !dryRun {
+		notifyApp(subject, kl8NotifyBody(summary), map[string]any{
+			"period":   draw.Code,
+			"date":     draw.Date,
+			"numbers":  draw.RawNumbers,
+			"winning":  summary.WinningBets,
+			"checked":  summary.CheckedBets,
+			"total":    summary.TotalPrize,
+			"report":   body,
+		})
+	}
+
 	if dryRun {
 		log.Printf("dry-run enabled, skip sending mail")
 		return nil
@@ -107,7 +120,6 @@ func runOnce(ticketsPath, apiURL string, allowAnyDay, dryRun bool) error {
 	if err != nil {
 		return fmt.Errorf("mail config: %w", err)
 	}
-	subject := fmt.Sprintf("快乐8查奖 %s 合计%.2f元", draw.Code, summary.TotalPrize)
 	if err := sendMail(mailCfg, subject, body); err != nil {
 		return fmt.Errorf("send mail: %w", err)
 	}

@@ -3,8 +3,11 @@
 # - ALIYUN_ACR_* / ECS_* （同博客部署）
 # - DEEP_SEEK_API_KEY / QWEN_API_KEY / KIMI_API_KEY / GLM_API_KEY / MINIMAX_API_KEY
 # - LOTTERY_ADMIN_TOKEN：管理接口口令（openssl rand -hex 24）
+# - LOTTERY_JWT_SECRET：App 登录 JWT 密钥（可与 ADMIN 相同；不填则回退 ADMIN）
+# - LOTTERY_API_BASE：App 打包公网 API，如 http://x.x.x.x:8090
+#   本地：写入 lottery-ai/frontend/.env；CI 打包时从 Secret 注入同名变量
 # - LOTTERY_DATABASE_URL：本机 PostgreSQL 14 连接串
-#   例：postgres://postgres:PASSWORD@host.docker.internal:5432/lottery_ai?sslmode=disable
+#   例：postgres://postgres:PASSWORD@127.0.0.1:5432/lottery_ai?sslmode=disable
 name: Deploy Lottery AI
 
 on:
@@ -19,6 +22,7 @@ env:
   REGISTRY: ${{ secrets.ALIYUN_ACR_REGISTRY }}
   NAMESPACE: ${{ secrets.ALIYUN_ACR_NAMESPACE }}
   LOTTERY_IMAGE: ${{ secrets.ALIYUN_ACR_REGISTRY }}/${{ secrets.ALIYUN_ACR_NAMESPACE }}/youth-lab-lottery-ai
+  LOTTERY_API_BASE: ${{ secrets.LOTTERY_API_BASE }}
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
@@ -56,6 +60,7 @@ jobs:
                   HTTP_ADDR: ":8090"
                   DATABASE_URL: ${DATABASE_URL}
                   ADMIN_TOKEN: ${LOTTERY_ADMIN_TOKEN}
+                  JWT_SECRET: ${LOTTERY_JWT_SECRET}
                   DEEP_SEEK_API_KEY: ${DEEP_SEEK_API_KEY}
                   QWEN_API_KEY: ${QWEN_API_KEY}
                   KIMI_API_KEY: ${KIMI_API_KEY}
@@ -69,6 +74,9 @@ jobs:
             {
               printf 'LOTTERY_IMAGE=%s\n' "$LOTTERY_IMAGE"
               printf 'LOTTERY_ADMIN_TOKEN=%s\n' "${{ secrets.LOTTERY_ADMIN_TOKEN }}"
+              JWT_SECRET_VALUE='${{ secrets.LOTTERY_JWT_SECRET }}'
+              if [ -z "$JWT_SECRET_VALUE" ]; then JWT_SECRET_VALUE='${{ secrets.LOTTERY_ADMIN_TOKEN }}'; fi
+              printf 'LOTTERY_JWT_SECRET=%s\n' "$JWT_SECRET_VALUE"
               printf 'DATABASE_URL=%s\n' "${{ secrets.LOTTERY_DATABASE_URL }}"
               printf 'DEEP_SEEK_API_KEY=%s\n' "${{ secrets.DEEP_SEEK_API_KEY }}"
               printf 'QWEN_API_KEY=%s\n' "${{ secrets.QWEN_API_KEY }}"

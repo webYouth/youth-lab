@@ -47,7 +47,10 @@ func (s *Service) EvaluateOne(ctx context.Context, lotteryCode string) error {
 			return err
 		}
 	}
-	return s.refreshAccuracy(ctx, lotteryCode)
+	if err := s.refreshAccuracy(ctx, lotteryCode); err != nil {
+		return err
+	}
+	return s.Recalibrate(ctx, lotteryCode)
 }
 
 func compare(lotteryCode string, predicted, actual json.RawMessage) (matched []int, hitCount int, hitRate float64, level string, isWin bool) {

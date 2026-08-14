@@ -4,7 +4,6 @@ import { useQuery } from '@tanstack/react-query';
 import { Card, Text } from 'react-native-paper';
 import { fetchToday } from '../api/client';
 import type { Prediction } from '../types';
-import DisclaimerBanner from '../components/DisclaimerBanner';
 import NumberBalls from '../components/NumberBalls';
 import QueryState from '../components/QueryState';
 import Screen, { SectionTitle } from '../components/Screen';
@@ -22,7 +21,6 @@ export default function PredictDetailScreen() {
 
   return (
     <Screen title="预测详情" onBack={() => nav.goBack()}>
-      <DisclaimerBanner />
       <QueryState loading={q.isLoading} error={q.error} onRetry={() => q.refetch()} />
       {!q.isLoading && !q.isError ? (
         <>

@@ -24,21 +24,32 @@ import (
 
 type Service struct {
 	Store *store.Store
+	mu    sync.Mutex
 }
 
 func New(st *store.Store) *Service { return &Service{Store: st} }
 
 type Features struct {
-	Summary string         `json:"summary"`
-	Hot     []int          `json:"hot"`
-	Cold    []int          `json:"cold"`
-	Missing map[string]int `json:"missing"`
-	Extras  map[string]any `json:"extras"`
+	Summary  string         `json:"summary"`
+	Hot      []int          `json:"hot"`
+	Cold     []int          `json:"cold"`
+	Missing  map[string]int `json:"missing"`
+	Extras   map[string]any `json:"extras"`
+	Strategy string         `json:"strategy,omitempty"`
 }
 
 func (s *Service) GenerateToday(ctx context.Context, lotteryCode string) error {
+	return s.Generate(ctx, lotteryCode, false)
+}
+
+func (s *Service) Generate(ctx context.Context, lotteryCode string, force bool) error {
+	if !s.mu.TryLock() {
+		return fmt.Errorf("已有预测任务在执行，请稍后再试")
+	}
+	defer s.mu.Unlock()
+
 	now := time.Now().In(shanghai())
-	if !lottery.HasDrawToday(lotteryCode, now) {
+	if !force && !lottery.HasDrawToday(lotteryCode, now) {
 		log.Printf("[predict] skip %s: no draw today", lotteryCode)
 		return nil
 	}
@@ -47,6 +58,7 @@ func (s *Service) GenerateToday(ctx context.Context, lotteryCode string) error {
 		return err
 	}
 	feat := ComputeFeatures(lotteryCode, history)
+	feat.Strategy = s.strategyPrompt(ctx, lotteryCode)
 	latest, _ := s.Store.LatestDraw(ctx, lotteryCode)
 	issue := lottery.NextIssueHint(latest, now)
 	models, err := s.Store.ListEnabledModels(ctx)
@@ -105,7 +117,7 @@ func (s *Service) GenerateToday(ctx context.Context, lotteryCode string) error {
 		ModelCode:        consts.ModelFinal,
 		PredictedNumbers: finalJSON,
 		Confidence:       final.Confidence,
-		Reason:           final.Reason + " | " + consts.Disclaimer,
+		Reason:           final.Reason,
 		FinalFlag:        true,
 		Success:          true,
 	})
@@ -244,7 +256,7 @@ func callModel(ctx context.Context, cfg model.ModelConfig, lotteryCode string, f
 	reqBody := map[string]any{
 		"model": cfg.ModelName,
 		"messages": []map[string]string{
-			{"role": "system", "content": "你是彩票数据分析助手，只输出 JSON，不做投注建议。免责声明：" + consts.Disclaimer},
+			{"role": "system", "content": "你是彩票历史数据分析助手，只输出指定 JSON。"},
 			{"role": "user", "content": prompt},
 		},
 		"temperature": 0.4,
@@ -291,13 +303,17 @@ func callModel(ctx context.Context, cfg model.ModelConfig, lotteryCode string, f
 }
 
 func buildPrompt(lotteryCode string, feat Features) string {
+	extra := ""
+	if feat.Strategy != "" {
+		extra = "\n" + feat.Strategy + "\n请按上述权重侧重表现更好的模型思路，并避免重复近期低命中组合。"
+	}
 	switch lotteryCode {
 	case consts.LotteryDLT:
-		return feat.Summary + "\n请预测下一期大乐透：前区5个(1-35)、后区2个(1-12)。只返回JSON：{\"numbers\":[...5],\"back_numbers\":[...2],\"confidence\":0.0,\"reason\":\"...\"}"
+		return feat.Summary + extra + "\n请预测下一期大乐透：前区5个(1-35)、后区2个(1-12)。只返回JSON：{\"numbers\":[...5],\"back_numbers\":[...2],\"confidence\":0.0,\"reason\":\"...\"}"
 	case consts.LotteryP3:
-		return feat.Summary + "\n请预测下一期排列三三位数字(0-9，有序)。只返回JSON：{\"numbers\":[d1,d2,d3],\"confidence\":0.0,\"reason\":\"...\"}"
+		return feat.Summary + extra + "\n请预测下一期排列三三位数字(0-9，有序)。只返回JSON：{\"numbers\":[d1,d2,d3],\"confidence\":0.0,\"reason\":\"...\"}"
 	default:
-		return feat.Summary + "\n请预测下一期快乐8：20个开奖号码(1-80)，并给出选十推荐10个。只返回JSON：{\"numbers\":[...20],\"pick10\":[...10],\"confidence\":0.0,\"reason\":\"...\"}"
+		return feat.Summary + extra + "\n请预测下一期快乐8：20个开奖号码(1-80)，并给出选十推荐10个。只返回JSON：{\"numbers\":[...20],\"pick10\":[...10],\"confidence\":0.0,\"reason\":\"...\"}"
 	}
 }
 

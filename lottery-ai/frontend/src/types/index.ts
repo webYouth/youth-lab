@@ -39,4 +39,19 @@ export type AccuracyStat = {
   last_30_hit_rate: number;
 };
 
-export const DISCLAIMER = '预测结果仅供个人学习，不构成投注建议';
+export type ModelStrategy = {
+  model_code: string;
+  weight: number;
+  last_30_hit_rate: number;
+  notes?: string;
+};
+
+export type AppNotification = {
+  id: number;
+  type: string;
+  title: string;
+  body: string;
+  payload?: any;
+  read: boolean;
+  created_at: string;
+};

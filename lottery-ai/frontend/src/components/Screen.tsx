@@ -1,6 +1,7 @@
 import React from 'react';
 import { Image, ScrollView, StyleSheet, View } from 'react-native';
 import { Appbar, Text, useTheme } from 'react-native-paper';
+import MessageBell from './MessageBell';
 
 type Props = {
   title: string;
@@ -8,9 +9,20 @@ type Props = {
   children: React.ReactNode;
   scroll?: boolean;
   onBack?: () => void;
+  actions?: React.ReactNode;
+  /** 右上角消息铃（主 Tab 页默认开启） */
+  messageBell?: boolean;
 };
 
-export default function Screen({ title, subtitle, children, scroll = true, onBack }: Props) {
+export default function Screen({
+  title,
+  subtitle,
+  children,
+  scroll = true,
+  onBack,
+  actions,
+  messageBell = false,
+}: Props) {
   const theme = useTheme();
   const body = scroll ? (
     <ScrollView contentContainerStyle={styles.content}>{children}</ScrollView>
@@ -27,6 +39,8 @@ export default function Screen({ title, subtitle, children, scroll = true, onBac
           <Image source={require('../../assets/icon.png')} style={styles.logo} />
         )}
         <Appbar.Content title={title} subtitle={subtitle} />
+        {actions}
+        {messageBell ? <MessageBell /> : null}
       </Appbar.Header>
       {body}
     </View>

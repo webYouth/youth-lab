@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"youthlab/lottery-ai/internal/config"
-	"youthlab/lottery-ai/internal/consts"
 	"youthlab/lottery-ai/internal/store"
 )
 
@@ -62,7 +61,7 @@ func main() {
 		}
 		sample := map[string]any{
 			"messages": []map[string]string{
-				{"role": "system", "content": "你是彩票数据分析助手。" + consts.Disclaimer},
+				{"role": "system", "content": "你是彩票数据分析助手。"},
 				{"role": "user", "content": fmt.Sprintf("请基于历史特征预测 %s 期号 %s。实际开奖参考仅用于训练：%s", *lotteryCode, issue, string(resultJSON))},
 				{"role": "assistant", "content": predJSON},
 			},
