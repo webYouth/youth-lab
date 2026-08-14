@@ -1,0 +1,89 @@
+# 独立部署：彩票 AI 预测系统 -> ACR -> ECS（可选）
+# 依赖 Secrets：
+# - ALIYUN_ACR_* / ECS_* （同博客部署）
+# - DEEP_SEEK_API_KEY / QWEN_API_KEY / KIMI_API_KEY / GLM_API_KEY / MINIMAX_API_KEY
+# - LOTTERY_ADMIN_TOKEN：管理接口口令（openssl rand -hex 24）
+# - LOTTERY_DATABASE_URL：本机 PostgreSQL 14 连接串
+#   例：postgres://postgres:PASSWORD@host.docker.internal:5432/lottery_ai?sslmode=disable
+name: Deploy Lottery AI
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'lottery-ai/**'
+      - '.github/workflows/deploy-lottery-ai.yml'
+  workflow_dispatch:
+
+env:
+  REGISTRY: ${{ secrets.ALIYUN_ACR_REGISTRY }}
+  NAMESPACE: ${{ secrets.ALIYUN_ACR_NAMESPACE }}
+  LOTTERY_IMAGE: ${{ secrets.ALIYUN_ACR_REGISTRY }}/${{ secrets.ALIYUN_ACR_NAMESPACE }}/youth-lab-lottery-ai
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Login ACR
+        run: |
+          echo "${{ secrets.ALIYUN_ACR_PASSWORD }}" | docker login -u "${{ secrets.ALIYUN_ACR_USERNAME }}" --password-stdin "$REGISTRY"
+
+      - name: Build and push lottery-ai image
+        run: |
+          docker build -t "$LOTTERY_IMAGE:latest" -f lottery-ai/backend/Dockerfile ./lottery-ai/backend
+          docker push "$LOTTERY_IMAGE:latest"
+
+      - name: Deploy lottery-ai on ECS
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.ECS_HOST }}
+          username: ${{ secrets.ECS_USER }}
+          key: ${{ secrets.ECS_SSH_PRIVATE_KEY }}
+          envs: REGISTRY,LOTTERY_IMAGE
+          command_timeout: 40m
+          script: |
+            set -e
+            mkdir -p /opt/youth-lab/lottery-ai
+            cat > /opt/youth-lab/lottery-ai/docker-compose.yml <<'YAML'
+            services:
+              lottery-ai:
+                image: ${LOTTERY_IMAGE}:latest
+                extra_hosts:
+                  - "host.docker.internal:host-gateway"
+                ports:
+                  - "8090:8090"
+                environment:
+                  HTTP_ADDR: ":8090"
+                  DATABASE_URL: ${DATABASE_URL}
+                  ADMIN_TOKEN: ${LOTTERY_ADMIN_TOKEN}
+                  DEEP_SEEK_API_KEY: ${DEEP_SEEK_API_KEY}
+                  QWEN_API_KEY: ${QWEN_API_KEY}
+                  KIMI_API_KEY: ${KIMI_API_KEY}
+                  GLM_API_KEY: ${GLM_API_KEY}
+                  MINIMAX_API_KEY: ${MINIMAX_API_KEY}
+                  TZ: Asia/Shanghai
+                restart: unless-stopped
+            YAML
+
+            umask 077
+            {
+              printf 'LOTTERY_IMAGE=%s\n' "$LOTTERY_IMAGE"
+              printf 'LOTTERY_ADMIN_TOKEN=%s\n' "${{ secrets.LOTTERY_ADMIN_TOKEN }}"
+              printf 'DATABASE_URL=%s\n' "${{ secrets.LOTTERY_DATABASE_URL }}"
+              printf 'DEEP_SEEK_API_KEY=%s\n' "${{ secrets.DEEP_SEEK_API_KEY }}"
+              printf 'QWEN_API_KEY=%s\n' "${{ secrets.QWEN_API_KEY }}"
+              printf 'KIMI_API_KEY=%s\n' "${{ secrets.KIMI_API_KEY }}"
+              printf 'GLM_API_KEY=%s\n' "${{ secrets.GLM_API_KEY }}"
+              printf 'MINIMAX_API_KEY=%s\n' "${{ secrets.MINIMAX_API_KEY }}"
+            } > /opt/youth-lab/lottery-ai/.env
+            chmod 600 /opt/youth-lab/lottery-ai/.env
+
+            echo "${{ secrets.ALIYUN_ACR_PASSWORD }}" | docker login -u "${{ secrets.ALIYUN_ACR_USERNAME }}" --password-stdin "$REGISTRY"
+            cd /opt/youth-lab/lottery-ai
+            if command -v docker-compose >/dev/null 2>&1; then COMPOSE="docker-compose"; else COMPOSE="docker compose"; fi
+            $COMPOSE --env-file .env pull
+            $COMPOSE --env-file .env up -d --remove-orphans
+            $COMPOSE --env-file .env ps
