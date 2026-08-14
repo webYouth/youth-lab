@@ -30,6 +30,10 @@ func main() {
 	flag.Parse()
 
 	cfg := config.Load()
+	log.Printf("starting lottery-ai http=%s", cfg.HTTPAddr)
+	if cfg.DatabaseURL == "" {
+		log.Fatalf("DATABASE_URL is empty")
+	}
 	ctx := context.Background()
 	st, err := store.New(ctx, cfg.DatabaseURL)
 	if err != nil {

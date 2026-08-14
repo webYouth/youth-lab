@@ -2,7 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import axios from 'axios';
 import type { AccuracyStat, ApiResp, DrawResult, LotteryType, Prediction } from '../types';
 
-const DEFAULT_BASE = 'http://127.0.0.1:8090';
+const DEFAULT_BASE = 'http://47.106.178.183:8090';
 
 export async function getBaseURL() {
   return (await AsyncStorage.getItem('server_url')) || DEFAULT_BASE;

@@ -51,10 +51,7 @@ jobs:
             services:
               lottery-ai:
                 image: ${LOTTERY_IMAGE}:latest
-                extra_hosts:
-                  - "host.docker.internal:host-gateway"
-                ports:
-                  - "8090:8090"
+                network_mode: host
                 environment:
                   HTTP_ADDR: ":8090"
                   DATABASE_URL: ${DATABASE_URL}

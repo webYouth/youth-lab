@@ -4,13 +4,13 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import DisclaimerBanner from '../components/DisclaimerBanner';
 
 export default function SettingsScreen() {
-  const [server, setServer] = useState('http://127.0.0.1:8090');
+  const [server, setServer] = useState('http://47.106.178.183:8090');
   const [token, setToken] = useState('');
   const [saved, setSaved] = useState(false);
 
   useEffect(() => {
     (async () => {
-      setServer((await AsyncStorage.getItem('server_url')) || 'http://127.0.0.1:8090');
+      setServer((await AsyncStorage.getItem('server_url')) || 'http://47.106.178.183:8090');
       setToken((await AsyncStorage.getItem('api_token')) || '');
     })();
   }, []);
