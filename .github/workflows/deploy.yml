@@ -39,6 +39,7 @@ env:
   SMTP_PASS: ${{ secrets.SMTP_PASS }}
   MAIL_FROM: ${{ secrets.MAIL_FROM }}
   MAIL_TO: ${{ secrets.MAIL_TO }}
+  LOTTERY_ADMIN_TOKEN: ${{ secrets.LOTTERY_ADMIN_TOKEN }}
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
@@ -93,7 +94,7 @@ jobs:
           host: ${{ secrets.ECS_HOST }}
           username: ${{ secrets.ECS_USER }}
           key: ${{ secrets.ECS_SSH_PRIVATE_KEY }}
-          envs: REGISTRY,SERVER_IMAGE,WEB_IMAGE,KL8_IMAGE,SMTP_HOST,SMTP_PORT,SMTP_USER,SMTP_PASS,MAIL_FROM,MAIL_TO
+          envs: REGISTRY,SERVER_IMAGE,WEB_IMAGE,KL8_IMAGE,SMTP_HOST,SMTP_PORT,SMTP_USER,SMTP_PASS,MAIL_FROM,MAIL_TO,LOTTERY_ADMIN_TOKEN
           # First deploy may need a long time to pull multiple ACR images.
           timeout: 2m
           command_timeout: 40m
@@ -116,6 +117,7 @@ jobs:
             SMTP_PASS_VALUE="${SMTP_PASS:-}"
             MAIL_FROM_VALUE="${MAIL_FROM:-$SMTP_USER_VALUE}"
             MAIL_TO_VALUE="${MAIL_TO:-webyouth@qq.com}"
+            LOTTERY_ADMIN_TOKEN_VALUE="${LOTTERY_ADMIN_TOKEN:-}"
 
             if [ -z "$SMTP_PASS_VALUE" ]; then
               echo "ERROR: SMTP_PASS secret is empty. Set GitHub Secret SMTP_PASS (QQ authorization code)."
@@ -134,6 +136,8 @@ jobs:
               printf 'SMTP_PASS=%s\n' "$SMTP_PASS_VALUE"
               printf 'MAIL_FROM=%s\n' "$MAIL_FROM_VALUE"
               printf 'MAIL_TO=%s\n' "$MAIL_TO_VALUE"
+              printf 'LOTTERY_NOTIFY_URL=%s\n' "http://host.docker.internal:8090/api/v1/admin/notify"
+              printf 'LOTTERY_ADMIN_TOKEN=%s\n' "$LOTTERY_ADMIN_TOKEN_VALUE"
             } > /opt/youth-lab/.env
             chmod 600 /opt/youth-lab/.env
             echo "wrote /opt/youth-lab/.env from GitHub Secrets"

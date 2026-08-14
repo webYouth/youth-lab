@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -53,17 +55,49 @@ func (s *Store) Close() { s.pool.Close() }
 func (s *Store) Pool() *pgxpool.Pool { return s.pool }
 
 func (s *Store) Migrate(ctx context.Context, sqlPath string) error {
-	raw, err := os.ReadFile(sqlPath)
+	files, err := sqlFiles(sqlPath)
 	if err != nil {
 		return err
 	}
-	// 按语句拆分执行，兼容 PostgreSQL 14 的 extended protocol 限制。
-	for _, stmt := range splitSQL(string(raw)) {
-		if _, err := s.pool.Exec(ctx, stmt); err != nil {
-			return fmt.Errorf("migrate stmt failed: %w; sql=%s", err, truncate(stmt, 180))
+	for _, f := range files {
+		raw, err := os.ReadFile(f)
+		if err != nil {
+			return err
+		}
+		for _, stmt := range splitSQL(string(raw)) {
+			if _, err := s.pool.Exec(ctx, stmt); err != nil {
+				return fmt.Errorf("migrate %s failed: %w; sql=%s", filepath.Base(f), err, truncate(stmt, 180))
+			}
 		}
 	}
 	return nil
+}
+
+func sqlFiles(p string) ([]string, error) {
+	st, err := os.Stat(p)
+	if err != nil {
+		return nil, err
+	}
+	dir := p
+	if !st.IsDir() {
+		dir = filepath.Dir(p)
+	}
+	ents, err := os.ReadDir(dir)
+	if err != nil {
+		return nil, err
+	}
+	var files []string
+	for _, e := range ents {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".sql") {
+			continue
+		}
+		files = append(files, filepath.Join(dir, e.Name()))
+	}
+	sort.Strings(files)
+	if len(files) == 0 {
+		return []string{p}, nil
+	}
+	return files, nil
 }
 
 func splitSQL(raw string) []string {
@@ -203,6 +237,15 @@ func (s *Store) InsertPrediction(ctx context.Context, p model.Prediction) (int64
 		INSERT INTO predictions
 		(lottery_code, issue, predict_date, model_code, predicted_numbers, confidence, reason, raw_response, final_flag, success, error_message)
 		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+		ON CONFLICT (lottery_code, issue, model_code) DO UPDATE SET
+			predict_date=EXCLUDED.predict_date,
+			predicted_numbers=EXCLUDED.predicted_numbers,
+			confidence=EXCLUDED.confidence,
+			reason=EXCLUDED.reason,
+			raw_response=EXCLUDED.raw_response,
+			final_flag=EXCLUDED.final_flag,
+			success=EXCLUDED.success,
+			error_message=EXCLUDED.error_message
 		RETURNING id`,
 		p.LotteryCode, p.Issue, p.PredictDate, p.ModelCode, p.PredictedNumbers, p.Confidence, p.Reason, p.RawResponse, p.FinalFlag, p.Success, nullStr(p.ErrorMessage),
 	).Scan(&id)
@@ -246,11 +289,14 @@ func (s *Store) ListPredictions(ctx context.Context, lotteryCode string, date *t
 	return out, total, rows.Err()
 }
 
-func (s *Store) TodayPredictions(ctx context.Context, lotteryCode string, day time.Time) ([]model.Prediction, error) {
+func (s *Store) TodayPredictions(ctx context.Context, lotteryCode string, _ time.Time) ([]model.Prediction, error) {
 	rows, err := s.pool.Query(ctx, `
 		SELECT id, lottery_code, issue, predict_date, model_code, predicted_numbers, confidence, COALESCE(reason,''), COALESCE(raw_response,''), final_flag, success, COALESCE(error_message,''), created_at
-		FROM predictions WHERE lottery_code=$1 AND predict_date=$2
-		ORDER BY final_flag DESC, id ASC`, lotteryCode, day.Format("2006-01-02"))
+		FROM predictions
+		WHERE lottery_code=$1 AND issue=(
+			SELECT issue FROM predictions WHERE lottery_code=$1 ORDER BY created_at DESC, id DESC LIMIT 1
+		)
+		ORDER BY final_flag DESC, id ASC`, lotteryCode)
 	if err != nil {
 		return nil, err
 	}
@@ -356,6 +402,179 @@ func (s *Store) ModelHitRate(ctx context.Context, lotteryCode, modelCode string)
 		SELECT COALESCE(avg_hit_rate, 0) FROM prediction_accuracy
 		WHERE lottery_code=$1 AND model_code=$2`, lotteryCode, modelCode).Scan(&rate)
 	return rate
+}
+
+func (s *Store) UpdateModelWeight(ctx context.Context, modelCode string, weight float64) error {
+	_, err := s.pool.Exec(ctx, `UPDATE model_configs SET weight=$2, updated_at=NOW() WHERE model_code=$1`, modelCode, weight)
+	return err
+}
+
+func (s *Store) InsertStrategy(ctx context.Context, lotteryCode, modelCode string, weight, hitRate float64, notes string) error {
+	_, err := s.pool.Exec(ctx, `
+		INSERT INTO model_strategies (lottery_code, model_code, weight, last_30_hit_rate, notes)
+		VALUES ($1,$2,$3,$4,$5)`, lotteryCode, modelCode, weight, hitRate, notes)
+	return err
+}
+
+func (s *Store) LatestStrategies(ctx context.Context, lotteryCode string) ([]model.ModelStrategy, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT DISTINCT ON (model_code) id, lottery_code, model_code, weight, last_30_hit_rate, COALESCE(notes,''), created_at
+		FROM model_strategies
+		WHERE lottery_code=$1
+		ORDER BY model_code, created_at DESC`, lotteryCode)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []model.ModelStrategy
+	for rows.Next() {
+		var st model.ModelStrategy
+		if err := rows.Scan(&st.ID, &st.LotteryCode, &st.ModelCode, &st.Weight, &st.Last30HitRate, &st.Notes, &st.CreatedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, st)
+	}
+	return out, rows.Err()
+}
+
+func (s *Store) RecentFinalHits(ctx context.Context, lotteryCode string, limit int) ([]model.PredictionResult, error) {
+	if limit < 1 {
+		limit = 5
+	}
+	rows, err := s.pool.Query(ctx, `
+		SELECT pr.id, pr.prediction_id, pr.draw_result_id, pr.matched_numbers, pr.hit_count, pr.hit_rate, COALESCE(pr.level,''), pr.is_win
+		FROM prediction_results pr
+		JOIN predictions p ON p.id=pr.prediction_id
+		WHERE p.lottery_code=$1 AND p.final_flag=TRUE
+		ORDER BY pr.id DESC LIMIT $2`, lotteryCode, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []model.PredictionResult
+	for rows.Next() {
+		var r model.PredictionResult
+		if err := rows.Scan(&r.ID, &r.PredictionID, &r.DrawResultID, &r.MatchedNumbers, &r.HitCount, &r.HitRate, &r.Level, &r.IsWin); err != nil {
+			return nil, err
+		}
+		out = append(out, r)
+	}
+	return out, rows.Err()
+}
+
+func (s *Store) InsertNotification(ctx context.Context, n model.AppNotification) (int64, error) {
+	payload := n.Payload
+	if len(payload) == 0 {
+		payload = json.RawMessage(`{}`)
+	}
+	var id int64
+	err := s.pool.QueryRow(ctx, `
+		INSERT INTO app_notifications (type, title, body, payload)
+		VALUES ($1,$2,$3,$4) RETURNING id`, n.Type, n.Title, n.Body, payload).Scan(&id)
+	return id, err
+}
+
+func (s *Store) ListNotifications(ctx context.Context, page, pageSize int) ([]model.AppNotification, int, error) {
+	if page < 1 {
+		page = 1
+	}
+	if pageSize < 1 || pageSize > 100 {
+		pageSize = 30
+	}
+	var total int
+	if err := s.pool.QueryRow(ctx, `SELECT COUNT(*) FROM app_notifications`).Scan(&total); err != nil {
+		return nil, 0, err
+	}
+	rows, err := s.pool.Query(ctx, `
+		SELECT id, type, title, body, payload, read, created_at
+		FROM app_notifications ORDER BY created_at DESC, id DESC
+		LIMIT $1 OFFSET $2`, pageSize, (page-1)*pageSize)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+	var out []model.AppNotification
+	for rows.Next() {
+		var n model.AppNotification
+		if err := rows.Scan(&n.ID, &n.Type, &n.Title, &n.Body, &n.Payload, &n.Read, &n.CreatedAt); err != nil {
+			return nil, 0, err
+		}
+		out = append(out, n)
+	}
+	return out, total, rows.Err()
+}
+
+func (s *Store) UnreadCount(ctx context.Context) (int, error) {
+	var n int
+	err := s.pool.QueryRow(ctx, `SELECT COUNT(*) FROM app_notifications WHERE read=FALSE`).Scan(&n)
+	return n, err
+}
+
+func (s *Store) MarkNotificationRead(ctx context.Context, id int64) error {
+	_, err := s.pool.Exec(ctx, `UPDATE app_notifications SET read=TRUE WHERE id=$1`, id)
+	return err
+}
+
+func (s *Store) MarkAllNotificationsRead(ctx context.Context) error {
+	_, err := s.pool.Exec(ctx, `UPDATE app_notifications SET read=TRUE WHERE read=FALSE`)
+	return err
+}
+
+func (s *Store) SetNotificationsRead(ctx context.Context, ids []int64, read bool) error {
+	if len(ids) == 0 {
+		return nil
+	}
+	_, err := s.pool.Exec(ctx, `UPDATE app_notifications SET read=$1 WHERE id = ANY($2)`, read, ids)
+	return err
+}
+
+func (s *Store) UpsertPushDevice(ctx context.Context, token, platform string) error {
+	_, err := s.pool.Exec(ctx, `
+		INSERT INTO push_devices (token, platform, updated_at)
+		VALUES ($1,$2,NOW())
+		ON CONFLICT (token) DO UPDATE SET platform=EXCLUDED.platform, updated_at=NOW()`, token, platform)
+	return err
+}
+
+func (s *Store) ListPushTokens(ctx context.Context) ([]string, error) {
+	rows, err := s.pool.Query(ctx, `SELECT token FROM push_devices ORDER BY updated_at DESC`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []string
+	for rows.Next() {
+		var t string
+		if err := rows.Scan(&t); err != nil {
+			return nil, err
+		}
+		out = append(out, t)
+	}
+	return out, rows.Err()
+}
+
+func (s *Store) CreateUser(ctx context.Context, username, passwordHash string) (*model.AppUser, error) {
+	var u model.AppUser
+	err := s.pool.QueryRow(ctx, `
+		INSERT INTO app_users (username, password_hash)
+		VALUES ($1,$2)
+		RETURNING id, username, password_hash, created_at`, username, passwordHash).
+		Scan(&u.ID, &u.Username, &u.PasswordHash, &u.CreatedAt)
+	if err != nil {
+		return nil, err
+	}
+	return &u, nil
+}
+
+func (s *Store) GetUserByUsername(ctx context.Context, username string) (*model.AppUser, error) {
+	var u model.AppUser
+	err := s.pool.QueryRow(ctx, `
+		SELECT id, username, password_hash, created_at FROM app_users WHERE username=$1`, username).
+		Scan(&u.ID, &u.Username, &u.PasswordHash, &u.CreatedAt)
+	if err != nil {
+		return nil, err
+	}
+	return &u, nil
 }
 
 func nullJSON(b json.RawMessage) any {

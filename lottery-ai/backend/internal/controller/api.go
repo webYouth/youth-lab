@@ -2,6 +2,7 @@
 package controller
 
 import (
+	"log"
 	"net/http"
 	"strconv"
 	"time"
@@ -10,6 +11,7 @@ import (
 
 	"youthlab/lottery-ai/internal/consts"
 	"youthlab/lottery-ai/internal/service/lottery"
+	"youthlab/lottery-ai/internal/service/notify"
 	"youthlab/lottery-ai/internal/service/predictor"
 	"youthlab/lottery-ai/internal/store"
 )
@@ -18,18 +20,20 @@ type API struct {
 	Store     *store.Store
 	Syncer    *lottery.Syncer
 	Predictor *predictor.Service
+	Notify    *notify.Service
+	JWTSecret string
 }
 
 func OK(c *gin.Context, data any) {
-	c.JSON(http.StatusOK, gin.H{"code": 0, "message": "ok", "data": data, "disclaimer": consts.Disclaimer})
+	c.JSON(http.StatusOK, gin.H{"code": 0, "message": "ok", "data": data})
 }
 
 func Fail(c *gin.Context, code int, msg string) {
-	c.JSON(http.StatusOK, gin.H{"code": code, "message": msg, "data": nil, "disclaimer": consts.Disclaimer})
+	c.JSON(http.StatusOK, gin.H{"code": code, "message": msg, "data": nil})
 }
 
 func (a *API) Health(c *gin.Context) {
-	OK(c, gin.H{"status": "ok", "disclaimer": consts.Disclaimer})
+	OK(c, gin.H{"status": "ok"})
 }
 
 func (a *API) LotteryTypes(c *gin.Context) {
@@ -58,7 +62,7 @@ func (a *API) PredictionsToday(c *gin.Context) {
 			models = append(models, p)
 		}
 	}
-	OK(c, gin.H{"final": final, "models": models, "disclaimer": consts.Disclaimer})
+	OK(c, gin.H{"final": final, "models": models})
 }
 
 func (a *API) Predictions(c *gin.Context) {
@@ -99,7 +103,8 @@ func (a *API) Accuracy(c *gin.Context) {
 		Fail(c, 500, err.Error())
 		return
 	}
-	OK(c, gin.H{"list": list, "days": c.DefaultQuery("days", "30")})
+	strategies, _ := a.Store.LatestStrategies(c.Request.Context(), code)
+	OK(c, gin.H{"list": list, "strategies": strategies, "days": c.DefaultQuery("days", "30")})
 }
 
 func (a *API) AdminSync(c *gin.Context) {
@@ -138,6 +143,38 @@ func (a *API) AdminEvaluate(c *gin.Context) {
 		return
 	}
 	OK(c, gin.H{"evaluated": true})
+}
+
+func (a *API) RunPredict(c *gin.Context) {
+	code := c.DefaultQuery("lottery_code", consts.LotteryDLT)
+	ctx := c.Request.Context()
+	_ = a.Syncer.SyncOne(ctx, code)
+	if err := a.Predictor.EvaluateOne(ctx, code); err != nil {
+		log.Printf("[run-predict] evaluate %s: %v", code, err)
+	}
+	if err := a.Predictor.Generate(ctx, code, true); err != nil {
+		Fail(c, 500, err.Error())
+		return
+	}
+	list, err := a.Store.TodayPredictions(ctx, code, time.Now())
+	if err != nil {
+		Fail(c, 500, err.Error())
+		return
+	}
+	var final any
+	models := make([]any, 0)
+	for _, p := range list {
+		if p.FinalFlag {
+			final = p
+		} else {
+			models = append(models, p)
+		}
+	}
+	strategies, _ := a.Store.LatestStrategies(ctx, code)
+	if a.Notify != nil {
+		a.Notify.PublishBestEffort(ctx, "predict", "预测完成 "+code, "最新一期预测已生成，打开 App 查看。", gin.H{"lottery_code": code})
+	}
+	OK(c, gin.H{"final": final, "models": models, "strategies": strategies, "generated": true})
 }
 
 func loc() *time.Location {

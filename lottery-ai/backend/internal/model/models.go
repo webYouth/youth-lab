@@ -63,13 +63,23 @@ type PredictionResult struct {
 }
 
 type AccuracyStat struct {
-	LotteryCode     string    `json:"lottery_code"`
-	ModelCode       string    `json:"model_code"`
-	TotalPredictions int      `json:"total_predictions"`
-	TotalHits       int       `json:"total_hits"`
-	AvgHitRate      float64   `json:"avg_hit_rate"`
-	Last30HitRate   float64   `json:"last_30_hit_rate"`
-	UpdatedAt       time.Time `json:"updated_at"`
+	LotteryCode      string    `json:"lottery_code"`
+	ModelCode        string    `json:"model_code"`
+	TotalPredictions int       `json:"total_predictions"`
+	TotalHits        int       `json:"total_hits"`
+	AvgHitRate       float64   `json:"avg_hit_rate"`
+	Last30HitRate    float64   `json:"last_30_hit_rate"`
+	UpdatedAt        time.Time `json:"updated_at"`
+}
+
+type ModelStrategy struct {
+	ID             int64     `json:"id"`
+	LotteryCode    string    `json:"lottery_code"`
+	ModelCode      string    `json:"model_code"`
+	Weight         float64   `json:"weight"`
+	Last30HitRate  float64   `json:"last_30_hit_rate"`
+	Notes          string    `json:"notes,omitempty"`
+	CreatedAt      time.Time `json:"created_at"`
 }
 
 // LLMPredictPayload 大模型标准返回。
@@ -79,4 +89,21 @@ type LLMPredictPayload struct {
 	Pick10      []int   `json:"pick10,omitempty"`
 	Confidence  float64 `json:"confidence"`
 	Reason      string  `json:"reason"`
+}
+
+type AppNotification struct {
+	ID        int64           `json:"id"`
+	Type      string          `json:"type"`
+	Title     string          `json:"title"`
+	Body      string          `json:"body"`
+	Payload   json.RawMessage `json:"payload"`
+	Read      bool            `json:"read"`
+	CreatedAt time.Time       `json:"created_at"`
+}
+
+type AppUser struct {
+	ID           int64     `json:"id"`
+	Username     string    `json:"username"`
+	PasswordHash string    `json:"-"`
+	CreatedAt    time.Time `json:"created_at"`
 }

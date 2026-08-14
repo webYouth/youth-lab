@@ -28,7 +28,7 @@ export default function QueryState({ loading, error, onRetry }: Props) {
         {msg}
       </Text>
       <Text variant="bodySmall" style={styles.hint}>
-        安全组请放行自定义 TCP 8090，不要只开 HTTP 80。
+        请确认已登录，且服务器地址（LOTTERY_API_BASE）配置正确。
       </Text>
       {onRetry ? (
         <Button mode="contained" onPress={onRetry} style={styles.btn}>

@@ -49,3 +49,6 @@ web/node_modules
 # Go build artifacts
 server/tmp
 kl8/tmp
+
+# Lottery AI local APK / build outputs
+lottery-ai/dist/

@@ -51,6 +51,8 @@ services:
   kl8:
     image: ${KL8_IMAGE:-crpi-hkob27jgcmdlnekv.cn-shenzhen.personal.cr.aliyuncs.com/webyouth/youth-lab-kl8}:latest
     restart: unless-stopped
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     env_file:
       - .env
     environment:
@@ -59,6 +61,8 @@ services:
       - KL8_START_HOUR=22
       - KL8_RETRY_MINUTES=5
       - MAIL_TO=${MAIL_TO:-webyouth@qq.com}
+      - LOTTERY_NOTIFY_URL=${LOTTERY_NOTIFY_URL:-http://host.docker.internal:8090/api/v1/admin/notify}
+      - LOTTERY_ADMIN_TOKEN=${LOTTERY_ADMIN_TOKEN:-}
     volumes:
       - ./kl8/tickets.yaml:/data/tickets.yaml:ro
     networks:
