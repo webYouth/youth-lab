@@ -95,7 +95,7 @@ CREATE TABLE IF NOT EXISTS sync_raw_logs (
 INSERT INTO lottery_types (code, name, rules, draw_days) VALUES
 ('DLT', '超级大乐透', '{"front":{"min":1,"max":35,"count":5},"back":{"min":1,"max":12,"count":2}}', '[1,3,6]'),
 ('P3',  '排列三',     '{"digits":{"min":0,"max":9,"count":3,"ordered":true}}', '[]'),
-('KL8', '快乐8',      '{"numbers":{"min":1,"max":80,"count":20},"pick10":10}', '[]')
+('KL8', '快乐8',      '{"numbers":{"min":1,"max":80,"count":10},"play":"选十"}', '[]')
 ON CONFLICT (code) DO NOTHING;
 
 -- 五个大模型配置（API Key 仅从环境变量读取）

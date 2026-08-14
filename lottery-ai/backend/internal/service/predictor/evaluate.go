@@ -105,18 +105,23 @@ func compare(lotteryCode string, predicted, actual json.RawMessage) (matched []i
 		isWin = hitCount == 3
 		return
 	default:
-		for _, n := range pred.Numbers {
+		// 快乐8按选十评估；兼容旧数据 numbers=20 + pick10=10
+		nums := pred.Numbers
+		if len(pred.Pick10) == 10 && len(nums) != 10 {
+			nums = pred.Pick10
+		}
+		for _, n := range nums {
 			if _, ok := drawSet[n]; ok {
 				matched = append(matched, n)
 			}
 		}
 		hitCount = len(matched)
-		denom := 20.0
-		if len(pred.Numbers) > 0 {
-			denom = float64(len(pred.Numbers))
+		denom := 10.0
+		if len(nums) > 0 {
+			denom = float64(len(nums))
 		}
 		hitRate = float64(hitCount) / denom
-		level = "号码命中"
+		level = "选十命中"
 		isWin = hitCount >= 5
 		return
 	}
