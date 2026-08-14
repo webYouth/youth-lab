@@ -1,9 +1,21 @@
 {
-  "name": "lottery-ai",
-  "slug": "lottery-ai",
-  "version": "1.0.0",
-  "orientation": "portrait",
-  "userInterfaceStyle": "automatic",
-  "ios": { "supportsTablet": true },
-  "android": { "adaptiveIcon": { "backgroundColor": "#0f172a" } }
+  "expo": {
+    "name": "Lottery AI",
+    "slug": "lottery-ai",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "automatic",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "top.webyouth.lotteryai"
+    },
+    "android": {
+      "package": "top.webyouth.lotteryai",
+      "adaptiveIcon": {
+        "backgroundColor": "#0f172a"
+      },
+      "usesCleartextTraffic": true
+    },
+    "plugins": []
+  }
 }

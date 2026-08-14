@@ -20,15 +20,32 @@ type Store struct {
 }
 
 func New(ctx context.Context, databaseURL string) (*Store, error) {
-	pool, err := pgxpool.New(ctx, databaseURL)
+	cfg, err := pgxpool.ParseConfig(databaseURL)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("parse database url: %w", err)
 	}
-	if err := pool.Ping(ctx); err != nil {
-		pool.Close()
-		return nil, err
+	// 初始化 SQL 含多条语句，需使用 simple protocol。
+	cfg.ConnConfig.DefaultQueryExecMode = pgx.QueryExecModeSimpleProtocol
+
+	var pool *pgxpool.Pool
+	var lastErr error
+	for i := 1; i <= 10; i++ {
+		pool, err = pgxpool.NewWithConfig(ctx, cfg)
+		if err == nil {
+			pingCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+			err = pool.Ping(pingCtx)
+			cancel()
+		}
+		if err == nil {
+			return &Store{pool: pool}, nil
+		}
+		lastErr = err
+		if pool != nil {
+			pool.Close()
+		}
+		time.Sleep(time.Duration(i) * time.Second)
 	}
-	return &Store{pool: pool}, nil
+	return nil, fmt.Errorf("db connect failed after retries: %w", lastErr)
 }
 
 func (s *Store) Close() { s.pool.Close() }
@@ -40,8 +57,26 @@ func (s *Store) Migrate(ctx context.Context, sqlPath string) error {
 	if err != nil {
 		return err
 	}
-	_, err = s.pool.Exec(ctx, string(raw))
-	return err
+	// 按语句拆分执行，兼容 PostgreSQL 14 的 extended protocol 限制。
+	for _, stmt := range splitSQL(string(raw)) {
+		if _, err := s.pool.Exec(ctx, stmt); err != nil {
+			return fmt.Errorf("migrate stmt failed: %w; sql=%s", err, truncate(stmt, 180))
+		}
+	}
+	return nil
+}
+
+func splitSQL(raw string) []string {
+	parts := strings.Split(raw, ";")
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		stmt := strings.TrimSpace(p)
+		if stmt == "" {
+			continue
+		}
+		out = append(out, stmt)
+	}
+	return out
 }
 
 func (s *Store) ListLotteryTypes(ctx context.Context) ([]model.LotteryType, error) {

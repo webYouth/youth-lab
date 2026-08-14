@@ -1,19 +1,15 @@
-# 彩票 AI 预测系统编排（连接 ECS 本机 PostgreSQL 14，不另起数据库容器）
+# 彩票 AI：使用宿主机网络，直连本机 PostgreSQL 14（127.0.0.1:5432）
 # 免责声明：预测结果仅供个人学习研究，不构成投注建议。
 services:
   lottery-ai:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-    ports:
-      - "8090:8090"
+    network_mode: host
     environment:
       HTTP_ADDR: ":8090"
-      # 容器内通过 host.docker.internal 访问宿主机 5432
-      DATABASE_URL: ${DATABASE_URL:-postgres://postgres:postgres@host.docker.internal:5432/lottery_ai?sslmode=disable}
-      ADMIN_TOKEN: ${ADMIN_TOKEN:-change-me-admin}
+      DATABASE_URL: ${DATABASE_URL:-postgres://postgres:postgres@127.0.0.1:5432/lottery_ai?sslmode=disable}
+      ADMIN_TOKEN: ${ADMIN_TOKEN:-${LOTTERY_ADMIN_TOKEN:-change-me-admin}}
       API_TOKEN: ${API_TOKEN:-}
       HISTORY_N: ${HISTORY_N:-500}
       TZ: Asia/Shanghai
