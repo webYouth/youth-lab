@@ -153,12 +153,12 @@ func (a *API) RunPredict(c *gin.Context) {
 		log.Printf("[run-predict] evaluate %s: %v", code, err)
 	}
 	if err := a.Predictor.Generate(ctx, code, true); err != nil {
-		Fail(c, 500, err.Error())
+		Fail(c, 500, publicFail(err))
 		return
 	}
 	list, err := a.Store.TodayPredictions(ctx, code, time.Now())
 	if err != nil {
-		Fail(c, 500, err.Error())
+		Fail(c, 500, "读取预测结果失败")
 		return
 	}
 	var final any
@@ -183,4 +183,16 @@ func loc() *time.Location {
 		return time.FixedZone("CST", 8*3600)
 	}
 	return l
+}
+
+// publicFail 接口只返回可读原因，不回传上游 API/堆栈原文。
+func publicFail(err error) string {
+	if err == nil {
+		return "操作失败"
+	}
+	msg := err.Error()
+	if msg == "已有预测任务在执行，请稍后再试" {
+		return msg
+	}
+	return "预测失败，请稍后重试"
 }

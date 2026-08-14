@@ -44,7 +44,7 @@ type Prediction struct {
 	PredictedNumbers  json.RawMessage `json:"predicted_numbers"`
 	Confidence        float64         `json:"confidence"`
 	Reason            string          `json:"reason,omitempty"`
-	RawResponse       string          `json:"raw_response,omitempty"`
+	RawResponse       string          `json:"-"` // 仅内部落库，不对外返回
 	FinalFlag         bool            `json:"final_flag"`
 	Success           bool            `json:"success"`
 	ErrorMessage      string          `json:"error_message,omitempty"`

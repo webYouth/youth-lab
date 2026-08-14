@@ -95,7 +95,7 @@ func (s *Service) Generate(ctx context.Context, lotteryCode string, force bool) 
 			Success:          it.err == nil,
 		}
 		if it.err != nil {
-			p.ErrorMessage = it.err.Error()
+			p.ErrorMessage = publicErr(it.err)
 			p.PredictedNumbers = json.RawMessage(`{}`)
 			log.Printf("[predict] model %s failed: %v", it.cfg.ModelCode, it.err)
 		} else {
@@ -279,25 +279,32 @@ func callModel(ctx context.Context, cfg model.ModelConfig, lotteryCode string, f
 		req.Header.Set("Authorization", "Bearer "+apiKey)
 		resp, err := client.Do(req)
 		if err != nil {
-			lastErr = err
+			log.Printf("[predict] model %s request: %v", cfg.ModelCode, err)
+			lastErr = fmt.Errorf("模型服务暂时不可用")
 			continue
 		}
 		body, _ := io.ReadAll(resp.Body)
 		resp.Body.Close()
 		raw = string(body)
 		if resp.StatusCode >= 300 {
-			lastErr = fmt.Errorf("status %d: %s", resp.StatusCode, truncate(raw, 300))
+			log.Printf("[predict] model %s http %d: %s", cfg.ModelCode, resp.StatusCode, truncate(raw, 300))
+			lastErr = fmt.Errorf("模型服务暂时不可用")
 			continue
 		}
 		content, err := extractContent(body)
 		if err != nil {
-			return model.LLMPredictPayload{}, raw, err
+			log.Printf("[predict] model %s extract: %v raw=%s", cfg.ModelCode, err, truncate(raw, 200))
+			return model.LLMPredictPayload{}, raw, fmt.Errorf("模型返回内容无效")
 		}
-		payload, err := parsePayload(content)
+		payload, err := parsePayload(lotteryCode, content)
 		if err != nil {
+			log.Printf("[predict] model %s parse: %v content=%s", cfg.ModelCode, err, truncate(content, 200))
 			return model.LLMPredictPayload{}, raw, err
 		}
 		return payload, raw, nil
+	}
+	if lastErr == nil {
+		lastErr = fmt.Errorf("模型调用失败")
 	}
 	return model.LLMPredictPayload{}, raw, lastErr
 }
@@ -307,13 +314,14 @@ func buildPrompt(lotteryCode string, feat Features) string {
 	if feat.Strategy != "" {
 		extra = "\n" + feat.Strategy + "\n请按上述权重侧重表现更好的模型思路，并避免重复近期低命中组合。"
 	}
+	confRule := "confidence 必须是 (0,1] 的小数（例如 0.62），禁止为 0，禁止省略。"
 	switch lotteryCode {
 	case consts.LotteryDLT:
-		return feat.Summary + extra + "\n请预测下一期大乐透：前区5个(1-35)、后区2个(1-12)。只返回JSON：{\"numbers\":[...5],\"back_numbers\":[...2],\"confidence\":0.0,\"reason\":\"...\"}"
+		return feat.Summary + extra + "\n请预测下一期大乐透：前区5个(1-35)、后区2个(1-12)。只返回JSON：{\"numbers\":[...5],\"back_numbers\":[...2],\"confidence\":0.62,\"reason\":\"...\"}。" + confRule
 	case consts.LotteryP3:
-		return feat.Summary + extra + "\n请预测下一期排列三三位数字(0-9，有序)。只返回JSON：{\"numbers\":[d1,d2,d3],\"confidence\":0.0,\"reason\":\"...\"}"
+		return feat.Summary + extra + "\n请预测下一期排列三三位数字(0-9，有序)。只返回JSON：{\"numbers\":[d1,d2,d3],\"confidence\":0.62,\"reason\":\"...\"}。" + confRule
 	default:
-		return feat.Summary + extra + "\n请预测下一期快乐8：20个开奖号码(1-80)，并给出选十推荐10个。只返回JSON：{\"numbers\":[...20],\"pick10\":[...10],\"confidence\":0.0,\"reason\":\"...\"}"
+		return feat.Summary + extra + "\n请预测下一期快乐8「选十」：从1-80中选出恰好10个不重复号码（不是20个）。只返回JSON：{\"numbers\":[...10],\"confidence\":0.62,\"reason\":\"...\"}。" + confRule
 	}
 }
 
@@ -334,7 +342,7 @@ func extractContent(body []byte) (string, error) {
 	return resp.Choices[0].Message.Content, nil
 }
 
-func parsePayload(content string) (model.LLMPredictPayload, error) {
+func parsePayload(lotteryCode, content string) (model.LLMPredictPayload, error) {
 	content = strings.TrimSpace(content)
 	if i := strings.Index(content, "{"); i >= 0 {
 		if j := strings.LastIndex(content, "}"); j > i {
@@ -343,9 +351,55 @@ func parsePayload(content string) (model.LLMPredictPayload, error) {
 	}
 	var p model.LLMPredictPayload
 	if err := json.Unmarshal([]byte(content), &p); err != nil {
-		return p, fmt.Errorf("invalid json payload: %w", err)
+		return p, fmt.Errorf("模型输出不是合法 JSON")
+	}
+	if p.Confidence <= 0 || p.Confidence > 1 {
+		return p, fmt.Errorf("置信度无效，必须在 (0,1] 且不能为 0")
+	}
+	switch lotteryCode {
+	case consts.LotteryDLT:
+		if len(p.Numbers) != 5 || len(p.BackNumbers) != 2 {
+			return p, fmt.Errorf("大乐透号码数量不正确（需前区5后区2）")
+		}
+	case consts.LotteryP3:
+		if len(p.Numbers) != 3 {
+			return p, fmt.Errorf("排列三号码数量不正确（需3位）")
+		}
+	case consts.LotteryKL8:
+		// 兼容旧输出：若 numbers 不是 10 个但给了 pick10，则采用选十
+		if len(p.Numbers) != 10 && len(p.Pick10) == 10 {
+			p.Numbers = p.Pick10
+		}
+		if len(p.Numbers) != 10 {
+			return p, fmt.Errorf("快乐8须选出恰好10个号码")
+		}
+		p.Pick10 = nil
 	}
 	return p, nil
+}
+
+// publicErr 对外只给可读原因，不回传上游 API 原文。
+func publicErr(err error) string {
+	if err == nil {
+		return "未知错误"
+	}
+	msg := strings.TrimSpace(err.Error())
+	switch {
+	case strings.Contains(msg, "置信度"):
+		return "置信度无效，必须在 (0,1] 且不能为 0"
+	case strings.Contains(msg, "快乐8"):
+		return "快乐8须选出恰好10个号码"
+	case strings.Contains(msg, "大乐透"):
+		return "大乐透号码数量不正确（需前区5后区2）"
+	case strings.Contains(msg, "排列三"):
+		return "排列三号码数量不正确（需3位）"
+	case strings.Contains(msg, "api key") || strings.Contains(msg, "API_KEY") || strings.Contains(msg, "密钥"):
+		return "模型密钥未配置"
+	case strings.HasPrefix(msg, "模型"):
+		return msg
+	default:
+		return "模型调用失败"
+	}
 }
 
 type aggItem struct {
@@ -357,7 +411,7 @@ type aggItem struct {
 
 func Aggregate(lotteryCode string, items []aggItem, hitRateFn func(string) float64) model.LLMPredictPayload {
 	if len(items) == 0 {
-		return model.LLMPredictPayload{Confidence: 0, Reason: "无可用模型结果，已优雅降级"}
+		return model.LLMPredictPayload{Confidence: 0.01, Reason: "无可用模型结果，已优雅降级"}
 	}
 	score := map[int]float64{}
 	backScore := map[int]float64{}
@@ -387,21 +441,25 @@ func Aggregate(lotteryCode string, items []aggItem, hitRateFn func(string) float
 	case consts.LotteryP3:
 		need = 3
 	case consts.LotteryKL8:
-		need = 20
+		need = 10
+	}
+	// 快乐8：优先用选十票；若模型只填了 numbers，则 numbers 已计入 score
+	if lotteryCode == consts.LotteryKL8 && len(pickScore) > 0 {
+		for n, w := range pickScore {
+			score[n] += w
+		}
+	}
+	conf := safeDiv(confSum, weightSum)
+	if conf <= 0 {
+		conf = 0.01
 	}
 	final := model.LLMPredictPayload{
 		Numbers:    topN(score, need),
-		Confidence: safeDiv(confSum, weightSum),
+		Confidence: conf,
 		Reason:     "多模型加权投票。" + strings.Join(reasons, " | "),
 	}
 	if lotteryCode == consts.LotteryDLT {
 		final.BackNumbers = topN(backScore, 2)
-	}
-	if lotteryCode == consts.LotteryKL8 {
-		final.Pick10 = topN(pickScore, 10)
-		if len(final.Pick10) == 0 {
-			final.Pick10 = topN(score, 10)
-		}
 	}
 	return final
 }
