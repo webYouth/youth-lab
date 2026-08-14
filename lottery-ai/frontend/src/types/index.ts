@@ -20,6 +20,7 @@ export type Prediction = {
   reason?: string;
   final_flag: boolean;
   success: boolean;
+  error_message?: string;
 };
 
 export type DrawResult = {

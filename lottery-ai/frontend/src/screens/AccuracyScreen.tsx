@@ -1,66 +1,63 @@
 import React, { useState } from 'react';
-import { ActivityIndicator, Dimensions, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Dimensions } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
 import { BarChart } from 'react-native-chart-kit';
+import { Card, Text, useTheme } from 'react-native-paper';
 import { fetchAccuracy } from '../api/client';
+import type { AccuracyStat } from '../types';
 import DisclaimerBanner from '../components/DisclaimerBanner';
+import LotteryChips from '../components/LotteryChips';
+import QueryState from '../components/QueryState';
+import Screen from '../components/Screen';
 
 export default function AccuracyScreen() {
+  const theme = useTheme();
   const [code, setCode] = useState('DLT');
-  const q = useQuery({ queryKey: ['acc', code], queryFn: () => fetchAccuracy(code) });
-  const list = q.data?.list || [];
+  const q = useQuery({ queryKey: ['acc', code], queryFn: (): Promise<{ list: AccuracyStat[] }> => fetchAccuracy(code) });
+  const list: AccuracyStat[] = q.data?.list || [];
 
   return (
-    <ScrollView contentContainerStyle={styles.container}>
-      <Text style={styles.title}>命中率统计</Text>
+    <Screen title="命中率">
       <DisclaimerBanner />
-      <View style={styles.row}>
-        {['DLT', 'P3', 'KL8'].map((c) => (
-          <Pressable key={c} onPress={() => setCode(c)} style={[styles.chip, code === c && styles.chipActive]}>
-            <Text style={styles.chipText}>{c}</Text>
-          </Pressable>
-        ))}
-      </View>
-      {q.isLoading ? <ActivityIndicator /> : null}
+      <LotteryChips value={code} onChange={setCode} />
+      <QueryState loading={q.isLoading} error={q.error} onRetry={() => q.refetch()} />
       {list.length > 0 ? (
-        <BarChart
-          data={{
-            labels: list.map((x) => x.model_code.slice(0, 6)),
-            datasets: [{ data: list.map((x) => Number((x.avg_hit_rate * 100).toFixed(1)) || 0) }],
-          }}
-          width={Dimensions.get('window').width - 32}
-          height={220}
-          yAxisSuffix="%"
-          chartConfig={{
-            backgroundGradientFrom: '#111827',
-            backgroundGradientTo: '#111827',
-            color: () => '#60a5fa',
-            labelColor: () => '#cbd5e1',
-          }}
-          style={{ borderRadius: 12 }}
-        />
-      ) : (
-        <Text style={styles.meta}>暂无命中率数据，等待开奖评估后更新</Text>
-      )}
+        <Card mode="contained">
+          <Card.Content>
+            <BarChart
+              data={{
+                labels: list.map((x) => x.model_code.slice(0, 6)),
+                datasets: [{ data: list.map((x) => Number((x.avg_hit_rate * 100).toFixed(1)) || 0) }],
+              }}
+              width={Dimensions.get('window').width - 64}
+              height={220}
+              yAxisLabel=""
+              yAxisSuffix="%"
+              fromZero
+              chartConfig={{
+                backgroundGradientFrom: theme.colors.elevation.level1,
+                backgroundGradientTo: theme.colors.elevation.level1,
+                color: () => theme.colors.primary,
+                labelColor: () => theme.colors.onSurfaceVariant,
+                barPercentage: 0.55,
+                decimalPlaces: 1,
+              }}
+              style={{ borderRadius: 12 }}
+            />
+          </Card.Content>
+        </Card>
+      ) : !q.isLoading && !q.isError ? (
+        <Text variant="bodyMedium">暂无命中率数据，等待开奖评估后更新</Text>
+      ) : null}
       {list.map((a) => (
-        <View key={a.model_code} style={styles.card}>
-          <Text style={styles.cardTitle}>{a.model_code}</Text>
-          <Text style={styles.meta}>总预测 {a.total_predictions} · 平均命中率 {(a.avg_hit_rate * 100).toFixed(1)}%</Text>
-          <Text style={styles.meta}>近30天命中率 {(a.last_30_hit_rate * 100).toFixed(1)}%</Text>
-        </View>
+        <Card key={a.model_code} mode="contained">
+          <Card.Title title={a.model_code} subtitle={`总预测 ${a.total_predictions}`} />
+          <Card.Content>
+            <Text variant="bodyMedium">平均命中率 {(a.avg_hit_rate * 100).toFixed(1)}%</Text>
+            <Text variant="bodyMedium">近 30 天 {(a.last_30_hit_rate * 100).toFixed(1)}%</Text>
+          </Card.Content>
+        </Card>
       ))}
-    </ScrollView>
+    </Screen>
   );
 }
-
-const styles = StyleSheet.create({
-  container: { padding: 16, paddingTop: 56, backgroundColor: '#0f172a', minHeight: '100%', gap: 10 },
-  title: { color: '#fff', fontSize: 24, fontWeight: '700' },
-  row: { flexDirection: 'row', gap: 8 },
-  chip: { backgroundColor: '#1e293b', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 16 },
-  chipActive: { backgroundColor: '#2563eb' },
-  chipText: { color: '#fff' },
-  card: { backgroundColor: '#111827', borderRadius: 12, padding: 12 },
-  cardTitle: { color: '#e2e8f0', fontWeight: '600' },
-  meta: { color: '#94a3b8' },
-});
