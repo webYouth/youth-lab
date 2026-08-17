@@ -87,6 +87,10 @@ type LLMPredictPayload struct {
 	Numbers     []int   `json:"numbers"`
 	BackNumbers []int   `json:"back_numbers,omitempty"`
 	Pick10      []int   `json:"pick10,omitempty"`
+	Sum         int     `json:"sum"`                    // 号码和值
+	Span        int     `json:"span"`                   // 跨度 = max-min
+	BackSum     int     `json:"back_sum,omitempty"`     // 大乐透后区和值
+	BackSpan    int     `json:"back_span,omitempty"`    // 大乐透后区跨度
 	Confidence  float64 `json:"confidence"`
 	Reason      string  `json:"reason"`
 }

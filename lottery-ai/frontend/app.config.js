@@ -11,7 +11,7 @@ const apiBase = (
 module.exports = {
   name: '彩票 AI',
   slug: 'lottery-ai',
-  version: '1.0.4',
+  version: '1.0.5',
   orientation: 'portrait',
   userInterfaceStyle: 'automatic',
   icon: './assets/icon.png',
@@ -28,7 +28,7 @@ module.exports = {
     package: 'top.webyouth.lotteryai',
     adaptiveIcon: {
       foregroundImage: './assets/adaptive-icon.png',
-      backgroundColor: '#6750A4',
+        backgroundColor: '#0084FF',
     },
     usesCleartextTraffic: true,
     permissions: [

@@ -32,6 +32,7 @@ export default function MessagesScreen() {
   const nav = useNavigation<any>();
   const qc = useQueryClient();
   const [selected, setSelected] = useState<number[]>([]);
+  const selecting = selected.length > 0;
   const q = useQuery({
     queryKey: ['notifications'],
     queryFn: () => fetchNotifications(1),
@@ -63,6 +64,14 @@ export default function MessagesScreen() {
 
   const toggle = (id: number) => {
     setSelected((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+  };
+
+  const openDetail = (n: AppNotification) => {
+    if (selecting) {
+      toggle(n.id);
+      return;
+    }
+    nav.navigate('MessageDetail', { notification: n });
   };
 
   return (
@@ -108,25 +117,29 @@ export default function MessagesScreen() {
         </View>
       ) : null}
       <View style={styles.list}>
-        {(list as AppNotification[]).map((n) => {
+        {list.map((n) => {
           const checked = selected.includes(n.id);
           return (
             <Card
               key={n.id}
               mode={n.read ? 'outlined' : 'elevated'}
               style={!n.read ? { borderLeftWidth: 3, borderLeftColor: theme.colors.primary } : undefined}
-              onPress={() => toggle(n.id)}
+              onPress={() => openDetail(n)}
               onLongPress={() => toggle(n.id)}
             >
               <Card.Title
                 title={n.title}
                 subtitle={`${TYPE_LABEL[n.type] || n.type} · ${formatTime(n.created_at)}`}
-                left={() => (
-                  <Checkbox
-                    status={checked ? 'checked' : 'unchecked'}
-                    onPress={() => toggle(n.id)}
-                  />
-                )}
+                left={
+                  selecting
+                    ? () => (
+                        <Checkbox
+                          status={checked ? 'checked' : 'unchecked'}
+                          onPress={() => toggle(n.id)}
+                        />
+                      )
+                    : undefined
+                }
                 right={() =>
                   n.read ? (
                     <Text variant="labelSmall" style={styles.tag}>
@@ -140,12 +153,9 @@ export default function MessagesScreen() {
                 }
               />
               <Card.Content>
-                <Text variant="bodyMedium">{n.body}</Text>
-                {n.type === 'kl8' && n.payload?.numbers ? (
-                  <Text variant="bodySmall" style={styles.meta}>
-                    开奖号 {String(n.payload.numbers)}
-                  </Text>
-                ) : null}
+                <Text variant="bodyMedium" numberOfLines={2}>
+                  {n.body}
+                </Text>
               </Card.Content>
             </Card>
           );
@@ -162,5 +172,4 @@ const styles = StyleSheet.create({
   list: { gap: 12 },
   batchBar: { flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' },
   tag: { marginRight: 16, fontWeight: '700' },
-  meta: { marginTop: 8, opacity: 0.75 },
 });

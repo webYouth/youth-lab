@@ -61,7 +61,7 @@ func (s *Syncer) syncSporttery(ctx context.Context, lotteryCode, gameNo string) 
 	pageSize := 100
 	maxPages := (s.History + pageSize - 1) / pageSize
 	if latest != nil {
-		maxPages = 3 // 增量时少拉几页
+		maxPages = 5 // 增量多拉几页，避免漏掉最新期
 	}
 	for page := 1; page <= maxPages; page++ {
 		url := fmt.Sprintf("https://webapi.sporttery.cn/gateway/lottery/getHistoryPageListV1.qry?gameNo=%s&provinceId=0&pageSize=%d&isVerify=1&pageNo=%d", gameNo, pageSize, page)
@@ -77,13 +77,18 @@ func (s *Syncer) syncSporttery(ctx context.Context, lotteryCode, gameNo string) 
 		if len(items) == 0 {
 			break
 		}
+		hitKnown := false
 		for _, item := range items {
-			if latest != nil && item.Issue == latest.Issue {
-				return nil
+			if latest != nil && !issueNewer(item.Issue, latest.Issue) {
+				hitKnown = true
+				continue
 			}
 			if err := s.Store.UpsertDraw(ctx, item); err != nil {
 				return err
 			}
+		}
+		if latest != nil && hitKnown {
+			return nil
 		}
 		if latest == nil && page*pageSize >= s.History {
 			break
@@ -250,33 +255,41 @@ func parseKL8(body []byte) ([]model.DrawResult, error) {
 	return out, nil
 }
 
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
-}
-
 // HasDrawToday 判断彩种当天是否开奖。
+// 大乐透：周一/三/六；排列三、快乐8：每天。
 func HasDrawToday(lotteryCode string, now time.Time) bool {
 	wd := int(now.Weekday()) // 0=Sunday
 	switch lotteryCode {
 	case consts.LotteryDLT:
-		// 周一三六 -> 1,3,6
 		return wd == 1 || wd == 3 || wd == 6
 	default:
 		return true
 	}
 }
 
-// NextIssueHint 生成预测期号提示（若未知则用日期）。
+// NextIssueHint 基于库内最新开奖期号生成下一期预测期号。
 func NextIssueHint(latest *model.DrawResult, now time.Time) string {
 	if latest == nil {
 		return now.Format("20060102")
 	}
-	// 尽量递增数字期号
-	if n, err := strconv.Atoi(latest.Issue); err == nil {
+	if n, err := strconv.Atoi(strings.TrimSpace(latest.Issue)); err == nil {
 		return strconv.Itoa(n + 1)
 	}
 	return now.Format("20060102") + "-pred"
+}
+
+func issueNewer(a, b string) bool {
+	na, ea := strconv.Atoi(strings.TrimSpace(a))
+	nb, eb := strconv.Atoi(strings.TrimSpace(b))
+	if ea == nil && eb == nil {
+		return na > nb
+	}
+	return strings.TrimSpace(a) > strings.TrimSpace(b)
+}
+
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
 }

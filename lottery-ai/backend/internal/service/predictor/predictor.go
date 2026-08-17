@@ -314,14 +314,14 @@ func buildPrompt(lotteryCode string, feat Features) string {
 	if feat.Strategy != "" {
 		extra = "\n" + feat.Strategy + "\n请按上述权重侧重表现更好的模型思路，并避免重复近期低命中组合。"
 	}
-	confRule := "confidence 必须是 (0,1] 的小数（例如 0.62），禁止为 0，禁止省略。"
+	confRule := "必须同时给出 sum(和值) 与 span(跨度=最大号-最小号)；confidence 必须是 (0,1] 的小数（例如 0.62），禁止为 0，禁止省略。"
 	switch lotteryCode {
 	case consts.LotteryDLT:
-		return feat.Summary + extra + "\n请预测下一期大乐透：前区5个(1-35)、后区2个(1-12)。只返回JSON：{\"numbers\":[...5],\"back_numbers\":[...2],\"confidence\":0.62,\"reason\":\"...\"}。" + confRule
+		return feat.Summary + extra + "\n请预测下一期大乐透：前区5个(1-35)、后区2个(1-12)。只返回JSON：{\"numbers\":[...5],\"back_numbers\":[...2],\"sum\":0,\"span\":0,\"back_sum\":0,\"back_span\":0,\"confidence\":0.62,\"reason\":\"...\"}。sum/span 为前区，back_sum/back_span 为后区。" + confRule
 	case consts.LotteryP3:
-		return feat.Summary + extra + "\n请预测下一期排列三三位数字(0-9，有序)。只返回JSON：{\"numbers\":[d1,d2,d3],\"confidence\":0.62,\"reason\":\"...\"}。" + confRule
+		return feat.Summary + extra + "\n请预测下一期排列三三位数字(0-9，有序)。只返回JSON：{\"numbers\":[d1,d2,d3],\"sum\":0,\"span\":0,\"confidence\":0.62,\"reason\":\"...\"}。" + confRule
 	default:
-		return feat.Summary + extra + "\n请预测下一期快乐8「选十」：从1-80中选出恰好10个不重复号码（不是20个）。只返回JSON：{\"numbers\":[...10],\"confidence\":0.62,\"reason\":\"...\"}。" + confRule
+		return feat.Summary + extra + "\n请预测下一期快乐8「选十」：从1-80中选出恰好10个不重复号码（不是20个）。只返回JSON：{\"numbers\":[...10],\"sum\":0,\"span\":0,\"confidence\":0.62,\"reason\":\"...\"}。" + confRule
 	}
 }
 
@@ -375,7 +375,34 @@ func parsePayload(lotteryCode, content string) (model.LLMPredictPayload, error) 
 		}
 		p.Pick10 = nil
 	}
+	fillSumSpan(&p)
 	return p, nil
+}
+
+func fillSumSpan(p *model.LLMPredictPayload) {
+	if len(p.Numbers) > 0 {
+		p.Sum, p.Span = sumAndSpan(p.Numbers)
+	}
+	if len(p.BackNumbers) > 0 {
+		p.BackSum, p.BackSpan = sumAndSpan(p.BackNumbers)
+	}
+}
+
+func sumAndSpan(nums []int) (sum, span int) {
+	if len(nums) == 0 {
+		return 0, 0
+	}
+	minN, maxN := nums[0], nums[0]
+	for _, n := range nums {
+		sum += n
+		if n < minN {
+			minN = n
+		}
+		if n > maxN {
+			maxN = n
+		}
+	}
+	return sum, maxN - minN
 }
 
 // publicErr 对外只给可读原因，不回传上游 API 原文。
@@ -461,6 +488,7 @@ func Aggregate(lotteryCode string, items []aggItem, hitRateFn func(string) float
 	if lotteryCode == consts.LotteryDLT {
 		final.BackNumbers = topN(backScore, 2)
 	}
+	fillSumSpan(&final)
 	return final
 }
 
