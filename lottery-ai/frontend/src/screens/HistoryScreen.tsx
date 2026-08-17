@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Card, Text } from 'react-native-paper';
 import { fetchDraws } from '../api/client';
 import type { DrawResult } from '../types';
+import { LOTTERY_DRAW_HINT } from '../theme';
 import LotteryChips from '../components/LotteryChips';
 import NumberBalls from '../components/NumberBalls';
 import QueryState from '../components/QueryState';
@@ -13,7 +14,7 @@ export default function HistoryScreen() {
   const q = useQuery({ queryKey: ['draws', code], queryFn: (): Promise<{ list: DrawResult[]; total: number }> => fetchDraws(code, 1) });
 
   return (
-    <Screen title="历史开奖" messageBell>
+    <Screen title="历史开奖" subtitle={LOTTERY_DRAW_HINT[code]} messageBell>
       <LotteryChips value={code} onChange={setCode} />
       <QueryState loading={q.isLoading} error={q.error} onRetry={() => q.refetch()} />
       {(q.data?.list || []).map((d: DrawResult) => {

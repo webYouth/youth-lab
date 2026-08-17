@@ -7,7 +7,7 @@ import LotteryChips from '../components/LotteryChips';
 import NumberBalls from '../components/NumberBalls';
 import QueryState from '../components/QueryState';
 import Screen, { SectionTitle } from '../components/Screen';
-import { LOTTERY_LABELS } from '../theme';
+import { LOTTERY_DRAW_HINT, LOTTERY_LABELS } from '../theme';
 
 type Props = { onLogout: () => void };
 
@@ -50,7 +50,7 @@ export default function HomeScreen({ onLogout }: Props) {
         {runM.isPending ? '正在预测，约需一分钟' : '立即预测'}
       </Button>
       {runM.isError ? (
-        <Text variant="bodyMedium" style={{ color: '#B3261E' }}>
+        <Text variant="bodyMedium" style={{ color: '#D32F2F' }}>
           {runM.error instanceof Error ? runM.error.message : '预测失败'}
         </Text>
       ) : null}
@@ -59,17 +59,34 @@ export default function HomeScreen({ onLogout }: Props) {
         <Card mode="elevated" onPress={() => nav.navigate('PredictDetail', { lotteryCode: code })}>
           <Card.Title
             title={`${LOTTERY_LABELS[code] || code} · 最新预测`}
-            subtitle={`期号 ${finalPred?.issue ?? '-'} · 置信度 ${finalPred?.confidence ?? '-'}`}
+            subtitle={`期号 ${finalPred?.issue ?? '-'} · 置信度 ${finalPred?.confidence ?? '-'} · ${LOTTERY_DRAW_HINT[code] || ''}`}
           />
           <Card.Content>
             <NumberBalls numbers={nums} />
             {back.length > 0 ? (
               <>
                 <SectionTitle>后区</SectionTitle>
-                <NumberBalls numbers={back} color="#1565C0" />
+                <NumberBalls numbers={back} color="#056DE8" />
               </>
             ) : null}
-            {!nums.length ? <Text variant="bodyMedium">暂无预测，点上方按钮生成</Text> : null}
+            {nums.length > 0 ? (
+              <Text variant="bodyMedium" style={{ marginTop: 8, opacity: 0.85 }}>
+                {[
+                  finalPred?.predicted_numbers?.sum != null ? `和值 ${finalPred.predicted_numbers.sum}` : null,
+                  finalPred?.predicted_numbers?.span != null ? `跨度 ${finalPred.predicted_numbers.span}` : null,
+                  finalPred?.predicted_numbers?.back_sum != null
+                    ? `后区和值 ${finalPred.predicted_numbers.back_sum}`
+                    : null,
+                  finalPred?.predicted_numbers?.back_span != null
+                    ? `后区跨度 ${finalPred.predicted_numbers.back_span}`
+                    : null,
+                ]
+                  .filter(Boolean)
+                  .join(' · ')}
+              </Text>
+            ) : (
+              <Text variant="bodyMedium">暂无预测，点上方按钮生成</Text>
+            )}
           </Card.Content>
           <Card.Actions>
             <Button mode="text" onPress={() => nav.navigate('PredictDetail', { lotteryCode: code })}>

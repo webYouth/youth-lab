@@ -15,6 +15,7 @@ import HistoryScreen from './src/screens/HistoryScreen';
 import AccuracyScreen from './src/screens/AccuracyScreen';
 import AuthScreen from './src/screens/AuthScreen';
 import MessagesScreen from './src/screens/MessagesScreen';
+import MessageDetailScreen from './src/screens/MessageDetailScreen';
 import PredictDetailScreen from './src/screens/PredictDetailScreen';
 import { clearSession, fetchMe, getToken } from './src/api/client';
 import { startNotificationWatch } from './src/notifications';
@@ -141,18 +142,18 @@ export default function App() {
             ) : (
               <Stack.Navigator
                 screenOptions={{
-                  // Android 常见：新页自底部上滑盖住旧页，下滑手势跟手返回
-                  animation: 'slide_from_bottom',
-                  animationDuration: 320,
+                  animation: 'slide_from_right',
+                  animationDuration: 280,
                   headerShown: false,
                   gestureEnabled: true,
                   fullScreenGestureEnabled: true,
-                  gestureDirection: 'vertical',
+                  gestureDirection: 'horizontal',
                 }}
               >
                 <Stack.Screen name="Main">{() => <Tabs onLogout={onLogout} />}</Stack.Screen>
                 <Stack.Screen name="PredictDetail" component={PredictDetailScreen} />
                 <Stack.Screen name="Messages" component={MessagesScreen} />
+                <Stack.Screen name="MessageDetail" component={MessageDetailScreen} />
               </Stack.Navigator>
             )}
           </NavigationContainer>
