@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Card, Text } from 'react-native-paper';
 import { fetchDraws } from '../api/client';
 import type { DrawResult } from '../types';
+import { formatDrawDate } from '../lib/dates';
 import { LOTTERY_DRAW_HINT } from '../theme';
 import LotteryChips from '../components/LotteryChips';
 import NumberBalls from '../components/NumberBalls';
@@ -22,7 +23,7 @@ export default function HistoryScreen() {
         const back = d.result?.back || [];
         return (
           <Card key={d.id} mode="contained">
-            <Card.Title title={`第 ${d.issue} 期`} subtitle={String(d.draw_date).slice(0, 10)} />
+            <Card.Title title={`第 ${d.issue} 期`} subtitle={formatDrawDate(d.draw_date)} />
             <Card.Content>
               <NumberBalls numbers={nums} />
               {back.length ? <NumberBalls numbers={back} color="#1565C0" /> : null}

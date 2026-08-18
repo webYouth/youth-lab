@@ -95,19 +95,46 @@ func runOnce(ticketsPath, apiURL string, allowAnyDay, dryRun bool) error {
 	}
 
 	summary := checkAll(tickets.Tickets, draw)
+	fp := ticketFingerprint(tickets.Tickets)
+	day := ChaseDay{
+		Date:        draw.Date,
+		Period:      draw.Code,
+		Fingerprint: fp,
+		Checked:     summary.CheckedBets,
+		Winning:     summary.WinningBets,
+		Stake:       summary.TotalStake,
+		Prize:       summary.TotalPrize,
+		Profit:      summary.TotalProfit,
+		Floating:    summary.FloatingBets,
+	}
+	led, err := upsertChaseDay(ledgerPath(), day)
+	if err != nil {
+		log.Printf("chase ledger: %v", err)
+		led = &ChaseLedger{Days: []ChaseDay{day}}
+	}
+	chase := chaseTotals(led, fp)
+
 	body := formatSummary(summary)
+	body += formatChaseFooter(chase)
 	log.Print(body)
 
-	subject := fmt.Sprintf("快乐8查奖 %s 合计%.2f元", draw.Code, summary.TotalPrize)
+	subject := fmt.Sprintf("快乐8查奖 %s 本期%s 累计%s", draw.Code, formatProfit(summary.TotalProfit), formatProfit(chase.Profit))
 	if !dryRun {
-		notifyApp(subject, kl8NotifyBody(summary), map[string]any{
-			"period":   draw.Code,
-			"date":     draw.Date,
-			"numbers":  draw.RawNumbers,
-			"winning":  summary.WinningBets,
-			"checked":  summary.CheckedBets,
-			"total":    summary.TotalPrize,
-			"report":   body,
+		notifyApp(subject, kl8NotifyBody(summary, chase), map[string]any{
+			"period":       draw.Code,
+			"date":         draw.Date,
+			"numbers":      draw.RawNumbers,
+			"winning":      summary.WinningBets,
+			"checked":      summary.CheckedBets,
+			"stake":        summary.TotalStake,
+			"prize":        summary.TotalPrize,
+			"profit":       summary.TotalProfit,
+			"floating":     summary.FloatingBets,
+			"chase_days":   chase.Days,
+			"chase_stake":  chase.Stake,
+			"chase_prize":  chase.Prize,
+			"chase_profit": chase.Profit,
+			"report":       body,
 		})
 	}
 

@@ -61,6 +61,18 @@ func main() {
 	sched.Start()
 	defer sched.Stop()
 
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 8*time.Minute)
+		defer cancel()
+		log.Printf("[startup] sync history and re-evaluate prizes")
+		if err := syncer.SyncAll(ctx); err != nil {
+			log.Printf("[startup] sync: %v", err)
+		}
+		if err := pred.EvaluateAll(ctx); err != nil {
+			log.Printf("[startup] evaluate: %v", err)
+		}
+	}()
+
 	api := &controller.API{Store: st, Syncer: syncer, Predictor: pred, Notify: ntf, JWTSecret: cfg.JWTSecret}
 	r := gin.Default()
 	r.GET("/api/v1/health", api.Health)

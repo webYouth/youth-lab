@@ -7,7 +7,7 @@ import { QueryClient, QueryClientProvider, useQueryClient } from '@tanstack/reac
 import { StatusBar } from 'expo-status-bar';
 import { useColorScheme } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
-import { PaperProvider } from 'react-native-paper';
+import { PaperProvider, useTheme } from 'react-native-paper';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import HomeScreen from './src/screens/HomeScreen';
@@ -44,17 +44,38 @@ function NotificationBootstrap({ enabled }: { enabled: boolean }) {
 }
 
 function Tabs({ onLogout }: { onLogout: () => void }) {
+  const theme = useTheme();
+  const icons: Record<
+    string,
+    {
+      on: React.ComponentProps<typeof MaterialCommunityIcons>['name'];
+      off: React.ComponentProps<typeof MaterialCommunityIcons>['name'];
+    }
+  > = {
+    首页: { on: 'home-variant', off: 'home-outline' },
+    开奖: { on: 'ticket-confirmation', off: 'ticket-outline' },
+    盈亏: { on: 'chart-bar', off: 'chart-box-outline' },
+  };
   return (
     <Tab.Navigator
       screenOptions={({ route }) => ({
         headerShown: false,
-        tabBarIcon: ({ color, size }) => {
-          const names: Record<string, React.ComponentProps<typeof MaterialCommunityIcons>['name']> = {
-            首页: 'home-variant',
-            开奖: 'history',
-            命中率: 'chart-bar',
-          };
-          return <MaterialCommunityIcons name={names[route.name] || 'circle'} color={color} size={size} />;
+        tabBarActiveTintColor: theme.colors.primary,
+        tabBarInactiveTintColor: theme.colors.onSurfaceVariant,
+        tabBarLabelStyle: { fontSize: 12, fontWeight: '600' },
+        tabBarStyle: {
+          backgroundColor: theme.colors.surface,
+          borderTopColor: theme.colors.outline,
+        },
+        tabBarIcon: ({ color, size, focused }) => {
+          const pair = icons[route.name] || { on: 'circle', off: 'circle-outline' };
+          return (
+            <MaterialCommunityIcons
+              name={focused ? pair.on : pair.off}
+              color={color}
+              size={focused ? size + 1 : size}
+            />
+          );
         },
       })}
     >
@@ -62,7 +83,7 @@ function Tabs({ onLogout }: { onLogout: () => void }) {
         {() => <HomeScreen onLogout={onLogout} />}
       </Tab.Screen>
       <Tab.Screen name="开奖" component={HistoryScreen} />
-      <Tab.Screen name="命中率" component={AccuracyScreen} />
+      <Tab.Screen name="盈亏" component={AccuracyScreen} />
     </Tab.Navigator>
   );
 }

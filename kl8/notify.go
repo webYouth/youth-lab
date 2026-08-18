@@ -45,9 +45,25 @@ func notifyApp(title, body string, payload any) {
 	log.Printf("app notify sent")
 }
 
-func kl8NotifyBody(summary *CheckSummary) string {
-	if summary.WinningBets == 0 {
-		return fmt.Sprintf("期号 %s 未中奖，共检查 %d 注。", summary.Draw.Code, summary.CheckedBets)
+func kl8NotifyBody(summary *CheckSummary, chase ChaseTotals) string {
+	line := fmt.Sprintf(
+		"期号 %s 投入 %s，奖金 %s，本期盈亏 %s。中奖 %d/%d 注。",
+		summary.Draw.Code,
+		formatYuanPlain(summary.TotalStake),
+		formatYuanPlain(summary.TotalPrize),
+		formatProfit(summary.TotalProfit),
+		summary.WinningBets,
+		summary.CheckedBets,
+	)
+	if summary.FloatingBets > 0 {
+		line += fmt.Sprintf(" 浮动奖 %d 注未计入金额。", summary.FloatingBets)
 	}
-	return fmt.Sprintf("期号 %s 中奖 %d 注，合计 %.2f 元。", summary.Draw.Code, summary.WinningBets, summary.TotalPrize)
+	if chase.Days > 0 {
+		line += fmt.Sprintf(" 追号 %d 期累计投入 %s，奖金 %s，累计盈亏 %s。", chase.Days, formatYuanPlain(chase.Stake), formatYuanPlain(chase.Prize), formatProfit(chase.Profit))
+	}
+	return line
+}
+
+func formatYuanPlain(v float64) string {
+	return fmt.Sprintf("%.2f元", v)
 }

@@ -18,16 +18,22 @@ type BetResult struct {
 	Level      string
 	UnitPrize  float64
 	TotalPrize float64
+	StakeYuan  float64
+	ProfitYuan float64
 	Won        bool
+	Floating   bool
 }
 
 type CheckSummary struct {
 	Draw         *DrawResult
 	Results      []BetResult
 	TotalPrize   float64
+	TotalStake   float64
+	TotalProfit  float64
 	WinningBets  int
 	CheckedBets  int
 	TicketCount  int
+	FloatingBets int
 }
 
 func checkAll(tickets []Ticket, draw *DrawResult) *CheckSummary {
@@ -44,6 +50,9 @@ func checkAll(tickets []Ticket, draw *DrawResult) *CheckSummary {
 		for i, bet := range ticket.Bets {
 			hits, hitNums := countHits(bet, drawSet)
 			amount, level, ok := unitPrize(ticket.Play, hits, draw.APIPrizes)
+			stake := roundMoney(stakeYuan * float64(ticket.Multiplier))
+			prize := roundMoney(amount * float64(ticket.Multiplier))
+			floating := ok && strings.Contains(level, "浮动")
 			res := BetResult{
 				TicketID:   ticket.ID,
 				Play:       ticket.Play,
@@ -55,22 +64,27 @@ func checkAll(tickets []Ticket, draw *DrawResult) *CheckSummary {
 				HitNums:    hitNums,
 				Level:      level,
 				UnitPrize:  amount,
-				TotalPrize: roundMoney(amount * float64(ticket.Multiplier)),
-				Won:        ok && amount > 0,
-			}
-			if ok && strings.Contains(level, "浮动") && amount == 0 {
-				// Floating award without published amount yet: still mark as won.
-				res.Won = true
+				TotalPrize: prize,
+				StakeYuan:  stake,
+				ProfitYuan: roundMoney(prize - stake),
+				Won:        ok && (amount > 0 || floating),
+				Floating:   floating,
 			}
 			summary.Results = append(summary.Results, res)
 			summary.CheckedBets++
+			summary.TotalStake += stake
+			summary.TotalPrize += prize
 			if res.Won {
 				summary.WinningBets++
-				summary.TotalPrize += res.TotalPrize
+			}
+			if floating && amount == 0 {
+				summary.FloatingBets++
 			}
 		}
 	}
+	summary.TotalStake = roundMoney(summary.TotalStake)
 	summary.TotalPrize = roundMoney(summary.TotalPrize)
+	summary.TotalProfit = roundMoney(summary.TotalPrize - summary.TotalStake)
 	return summary
 }
 
@@ -92,7 +106,12 @@ func formatSummary(summary *CheckSummary) string {
 	fmt.Fprintf(&b, "开奖日期: %s\n", draw.Date)
 	fmt.Fprintf(&b, "开奖号码: %s\n", draw.RawNumbers)
 	fmt.Fprintf(&b, "票数: %d | 注数: %d | 中奖注数: %d\n", summary.TicketCount, summary.CheckedBets, summary.WinningBets)
-	fmt.Fprintf(&b, "预计奖金合计: %.2f 元\n\n", summary.TotalPrize)
+	fmt.Fprintf(&b, "单注投入: %.0f 元\n", stakeYuan)
+	fmt.Fprintf(&b, "本期投入: %.2f 元 | 奖金: %.2f 元 | 盈亏: %s\n", summary.TotalStake, summary.TotalPrize, formatProfit(summary.TotalProfit))
+	if summary.FloatingBets > 0 {
+		fmt.Fprintf(&b, "浮动奖 %d 注金额未计入（待官方公布）\n", summary.FloatingBets)
+	}
+	fmt.Fprintf(&b, "\n")
 
 	currentTicket := ""
 	for _, r := range summary.Results {
@@ -106,22 +125,24 @@ func formatSummary(summary *CheckSummary) string {
 		}
 		fmt.Fprintf(
 			&b,
-			"[%s] 注#%d 命中%d个(%s) 奖级=%s 单注=%.2f 实得=%.2f 号码=%s\n",
+			"[%s] 注#%d 命中%d个(%s) 奖级=%s 投入=%.2f 奖金=%.2f 盈亏=%s 号码=%s\n",
 			status,
 			r.BetIndex,
 			r.Hits,
 			joinInts(r.HitNums),
 			r.Level,
-			r.UnitPrize,
+			r.StakeYuan,
 			r.TotalPrize,
+			formatProfit(r.ProfitYuan),
 			joinInts(r.Numbers),
 		)
 	}
 
 	fmt.Fprintf(&b, "\n说明:\n")
-	fmt.Fprintf(&b, "1) 奖金优先使用当期官方 prizegrades；缺失时回退固定奖表。\n")
-	fmt.Fprintf(&b, "2) 选十中十为浮动奖，封顶 500 万；未公布金额时会标注待官方公布。\n")
-	fmt.Fprintf(&b, "3) 复式按展开后的每一注单式分别计奖。\n")
+	fmt.Fprintf(&b, "1) 每注按 2 元×倍数计投入；盈亏=奖金-投入。\n")
+	fmt.Fprintf(&b, "2) 奖金优先使用当期官方 prizegrades；缺失时回退固定奖表。\n")
+	fmt.Fprintf(&b, "3) 选十中十为浮动奖，封顶 500 万；未公布金额时只记中奖不记金额。\n")
+	fmt.Fprintf(&b, "4) 复式按展开后的每一注单式分别计奖。\n")
 	return b.String()
 }
 

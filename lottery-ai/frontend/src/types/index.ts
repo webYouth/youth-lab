@@ -37,6 +37,26 @@ export type AccuracyStat = {
   total_predictions: number;
   avg_hit_rate: number;
   last_30_hit_rate: number;
+  total_wins?: number;
+  total_stake?: number;
+  total_prize?: number;
+  total_profit?: number;
+  last_30_wins?: number;
+  last_30_profit?: number;
+};
+
+export type AccuracyHistory = {
+  issue: string;
+  model_code: string;
+  final_flag: boolean;
+  draw_date: string;
+  is_win: boolean;
+  level: string;
+  hit_count: number;
+  stake_yuan: number;
+  prize_yuan: number;
+  profit_yuan: number;
+  prize_floating: boolean;
 };
 
 export type ModelStrategy = {

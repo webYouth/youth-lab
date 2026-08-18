@@ -151,7 +151,7 @@ func (s *Store) UpsertDraw(ctx context.Context, d model.DrawResult) error {
 		VALUES ($1,$2,$3,$4,$5)
 		ON CONFLICT (lottery_code, issue) DO UPDATE
 		SET draw_date=EXCLUDED.draw_date, result=EXCLUDED.result, raw_data=EXCLUDED.raw_data`,
-		d.LotteryCode, d.Issue, d.DrawDate, d.Result, nullJSON(d.RawData))
+		d.LotteryCode, d.Issue, dateParam(d.DrawDate), d.Result, nullJSON(d.RawData))
 	return err
 }
 
@@ -247,7 +247,7 @@ func (s *Store) InsertPrediction(ctx context.Context, p model.Prediction) (int64
 			success=EXCLUDED.success,
 			error_message=EXCLUDED.error_message
 		RETURNING id`,
-		p.LotteryCode, p.Issue, p.PredictDate, p.ModelCode, p.PredictedNumbers, p.Confidence, p.Reason, p.RawResponse, p.FinalFlag, p.Success, nullStr(p.ErrorMessage),
+		p.LotteryCode, p.Issue, dateParam(p.PredictDate), p.ModelCode, p.PredictedNumbers, p.Confidence, p.Reason, p.RawResponse, p.FinalFlag, p.Success, nullStr(p.ErrorMessage),
 	).Scan(&id)
 	return id, err
 }
@@ -314,8 +314,9 @@ func (s *Store) TodayPredictions(ctx context.Context, lotteryCode string, _ time
 
 func (s *Store) GetAccuracy(ctx context.Context, lotteryCode string) ([]model.AccuracyStat, error) {
 	rows, err := s.pool.Query(ctx, `
-		SELECT lottery_code, model_code, total_predictions, total_hits, avg_hit_rate, last_30_hit_rate, updated_at
-		FROM prediction_accuracy WHERE lottery_code=$1 ORDER BY avg_hit_rate DESC`, lotteryCode)
+		SELECT lottery_code, model_code, total_predictions, total_hits, total_wins, avg_hit_rate, last_30_hit_rate,
+			total_stake, total_prize, total_profit, last_30_wins, last_30_profit, updated_at
+		FROM prediction_accuracy WHERE lottery_code=$1 ORDER BY avg_hit_rate DESC, total_profit DESC`, lotteryCode)
 	if err != nil {
 		return nil, err
 	}
@@ -323,7 +324,8 @@ func (s *Store) GetAccuracy(ctx context.Context, lotteryCode string) ([]model.Ac
 	var out []model.AccuracyStat
 	for rows.Next() {
 		var a model.AccuracyStat
-		if err := rows.Scan(&a.LotteryCode, &a.ModelCode, &a.TotalPredictions, &a.TotalHits, &a.AvgHitRate, &a.Last30HitRate, &a.UpdatedAt); err != nil {
+		if err := rows.Scan(&a.LotteryCode, &a.ModelCode, &a.TotalPredictions, &a.TotalHits, &a.TotalWins, &a.AvgHitRate, &a.Last30HitRate,
+			&a.TotalStake, &a.TotalPrize, &a.TotalProfit, &a.Last30Wins, &a.Last30Profit, &a.UpdatedAt); err != nil {
 			return nil, err
 		}
 		out = append(out, a)
@@ -331,42 +333,94 @@ func (s *Store) GetAccuracy(ctx context.Context, lotteryCode string) ([]model.Ac
 	return out, rows.Err()
 }
 
+func (s *Store) ListAccuracyHistory(ctx context.Context, lotteryCode string, limit int) ([]model.AccuracyHistory, error) {
+	if limit < 1 || limit > 100 {
+		limit = 40
+	}
+	rows, err := s.pool.Query(ctx, `
+		SELECT p.issue, p.model_code, p.final_flag, to_char(d.draw_date, 'YYYY-MM-DD'),
+			pr.is_win, COALESCE(pr.level,''), pr.hit_count,
+			COALESCE(pr.stake_yuan,0), COALESCE(pr.prize_yuan,0), COALESCE(pr.profit_yuan,0), COALESCE(pr.prize_floating,FALSE)
+		FROM prediction_results pr
+		JOIN predictions p ON p.id=pr.prediction_id
+		JOIN draw_results d ON d.id=pr.draw_result_id
+		WHERE p.lottery_code=$1 AND p.success=TRUE AND p.final_flag=TRUE
+		ORDER BY d.draw_date DESC, p.issue DESC
+		LIMIT $2`, lotteryCode, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []model.AccuracyHistory
+	for rows.Next() {
+		var h model.AccuracyHistory
+		if err := rows.Scan(&h.Issue, &h.ModelCode, &h.FinalFlag, &h.DrawDate, &h.IsWin, &h.Level, &h.HitCount,
+			&h.StakeYuan, &h.PrizeYuan, &h.ProfitYuan, &h.PrizeFloating); err != nil {
+			return nil, err
+		}
+		out = append(out, h)
+	}
+	return out, rows.Err()
+}
+
 func (s *Store) UpsertAccuracy(ctx context.Context, a model.AccuracyStat) error {
 	_, err := s.pool.Exec(ctx, `
-		INSERT INTO prediction_accuracy (lottery_code, model_code, total_predictions, total_hits, avg_hit_rate, last_30_hit_rate, updated_at)
-		VALUES ($1,$2,$3,$4,$5,$6,NOW())
+		INSERT INTO prediction_accuracy (
+			lottery_code, model_code, total_predictions, total_hits, total_wins, avg_hit_rate, last_30_hit_rate,
+			total_stake, total_prize, total_profit, last_30_wins, last_30_profit, updated_at
+		)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,NOW())
 		ON CONFLICT (lottery_code, model_code) DO UPDATE SET
 			total_predictions=EXCLUDED.total_predictions,
 			total_hits=EXCLUDED.total_hits,
+			total_wins=EXCLUDED.total_wins,
 			avg_hit_rate=EXCLUDED.avg_hit_rate,
 			last_30_hit_rate=EXCLUDED.last_30_hit_rate,
+			total_stake=EXCLUDED.total_stake,
+			total_prize=EXCLUDED.total_prize,
+			total_profit=EXCLUDED.total_profit,
+			last_30_wins=EXCLUDED.last_30_wins,
+			last_30_profit=EXCLUDED.last_30_profit,
 			updated_at=NOW()`,
-		a.LotteryCode, a.ModelCode, a.TotalPredictions, a.TotalHits, a.AvgHitRate, a.Last30HitRate)
+		a.LotteryCode, a.ModelCode, a.TotalPredictions, a.TotalHits, a.TotalWins, a.AvgHitRate, a.Last30HitRate,
+		a.TotalStake, a.TotalPrize, a.TotalProfit, a.Last30Wins, a.Last30Profit)
 	return err
 }
 
 func (s *Store) InsertPredictionResult(ctx context.Context, r model.PredictionResult) error {
 	_, err := s.pool.Exec(ctx, `
-		INSERT INTO prediction_results (prediction_id, draw_result_id, matched_numbers, hit_count, hit_rate, level, is_win)
-		VALUES ($1,$2,$3,$4,$5,$6,$7)
+		INSERT INTO prediction_results (
+			prediction_id, draw_result_id, matched_numbers, hit_count, hit_rate, level, is_win,
+			stake_yuan, prize_yuan, profit_yuan, prize_floating, weight_yuan, weight_score, score_version
+		)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
 		ON CONFLICT (prediction_id, draw_result_id) DO UPDATE SET
 			matched_numbers=EXCLUDED.matched_numbers,
 			hit_count=EXCLUDED.hit_count,
 			hit_rate=EXCLUDED.hit_rate,
 			level=EXCLUDED.level,
-			is_win=EXCLUDED.is_win`,
-		r.PredictionID, r.DrawResultID, r.MatchedNumbers, r.HitCount, r.HitRate, r.Level, r.IsWin)
+			is_win=EXCLUDED.is_win,
+			stake_yuan=EXCLUDED.stake_yuan,
+			prize_yuan=EXCLUDED.prize_yuan,
+			profit_yuan=EXCLUDED.profit_yuan,
+			prize_floating=EXCLUDED.prize_floating,
+			weight_yuan=EXCLUDED.weight_yuan,
+			weight_score=EXCLUDED.weight_score,
+			score_version=EXCLUDED.score_version`,
+		r.PredictionID, r.DrawResultID, r.MatchedNumbers, r.HitCount, r.HitRate, r.Level, r.IsWin,
+		r.StakeYuan, r.PrizeYuan, r.ProfitYuan, r.PrizeFloating, r.WeightYuan, r.WeightScore, r.ScoreVersion)
 	return err
 }
 
-func (s *Store) UnevaluatedPredictions(ctx context.Context, lotteryCode string) ([]model.Prediction, error) {
+func (s *Store) UnevaluatedPredictions(ctx context.Context, lotteryCode string, minScoreVersion int) ([]model.Prediction, error) {
 	rows, err := s.pool.Query(ctx, `
 		SELECT p.id, p.lottery_code, p.issue, p.predict_date, p.model_code, p.predicted_numbers, p.confidence,
 			COALESCE(p.reason,''), COALESCE(p.raw_response,''), p.final_flag, p.success, COALESCE(p.error_message,''), p.created_at
 		FROM predictions p
+		JOIN draw_results d ON d.lottery_code=p.lottery_code AND d.issue=p.issue
 		LEFT JOIN prediction_results pr ON pr.prediction_id=p.id
-		WHERE p.lottery_code=$1 AND p.success=TRUE AND pr.id IS NULL
-		ORDER BY p.id ASC LIMIT 500`, lotteryCode)
+		WHERE p.lottery_code=$1 AND p.success=TRUE AND (pr.id IS NULL OR COALESCE(pr.score_version,0) < $2)
+		ORDER BY p.id ASC LIMIT 500`, lotteryCode, minScoreVersion)
 	if err != nil {
 		return nil, err
 	}
@@ -442,7 +496,8 @@ func (s *Store) RecentFinalHits(ctx context.Context, lotteryCode string, limit i
 		limit = 5
 	}
 	rows, err := s.pool.Query(ctx, `
-		SELECT pr.id, pr.prediction_id, pr.draw_result_id, pr.matched_numbers, pr.hit_count, pr.hit_rate, COALESCE(pr.level,''), pr.is_win
+		SELECT pr.id, pr.prediction_id, pr.draw_result_id, pr.matched_numbers, pr.hit_count, pr.hit_rate, COALESCE(pr.level,''), pr.is_win,
+			COALESCE(pr.stake_yuan,0), COALESCE(pr.prize_yuan,0), COALESCE(pr.profit_yuan,0), COALESCE(pr.prize_floating,FALSE)
 		FROM prediction_results pr
 		JOIN predictions p ON p.id=pr.prediction_id
 		WHERE p.lottery_code=$1 AND p.final_flag=TRUE
@@ -454,7 +509,8 @@ func (s *Store) RecentFinalHits(ctx context.Context, lotteryCode string, limit i
 	var out []model.PredictionResult
 	for rows.Next() {
 		var r model.PredictionResult
-		if err := rows.Scan(&r.ID, &r.PredictionID, &r.DrawResultID, &r.MatchedNumbers, &r.HitCount, &r.HitRate, &r.Level, &r.IsWin); err != nil {
+		if err := rows.Scan(&r.ID, &r.PredictionID, &r.DrawResultID, &r.MatchedNumbers, &r.HitCount, &r.HitRate, &r.Level, &r.IsWin,
+			&r.StakeYuan, &r.PrizeYuan, &r.ProfitYuan, &r.PrizeFloating); err != nil {
 			return nil, err
 		}
 		out = append(out, r)
@@ -575,6 +631,20 @@ func (s *Store) GetUserByUsername(ctx context.Context, username string) (*model.
 		return nil, err
 	}
 	return &u, nil
+}
+
+func dateParam(t time.Time) string {
+	loc, err := time.LoadLocation("Asia/Shanghai")
+	if err != nil {
+		loc = time.FixedZone("CST", 8*3600)
+	}
+	if t.IsZero() {
+		return time.Now().In(loc).Format("2006-01-02")
+	}
+	if t.Location() == time.UTC && t.Hour() == 0 && t.Minute() == 0 && t.Second() == 0 {
+		return t.Format("2006-01-02")
+	}
+	return t.In(loc).Format("2006-01-02")
 }
 
 func nullJSON(b json.RawMessage) any {

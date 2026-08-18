@@ -58,6 +58,7 @@ services:
     environment:
       - TZ=Asia/Shanghai
       - KL8_TICKETS_FILE=/data/tickets.yaml
+      - KL8_LEDGER_FILE=/data/ledger.json
       - KL8_START_HOUR=22
       - KL8_RETRY_MINUTES=5
       - MAIL_TO=${MAIL_TO:-webyouth@qq.com}
@@ -65,6 +66,7 @@ services:
       - LOTTERY_ADMIN_TOKEN=${LOTTERY_ADMIN_TOKEN:-}
     volumes:
       - ./kl8/tickets.yaml:/data/tickets.yaml:ro
+      - ./kl8/ledger.json:/data/ledger.json
     networks:
       - youth-lab-net
 

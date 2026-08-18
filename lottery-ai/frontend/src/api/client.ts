@@ -1,7 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import axios, { AxiosError } from 'axios';
 import { getConfiguredApiBase } from '../config';
-import type { AccuracyStat, ApiResp, AppNotification, DrawResult, LotteryType, ModelStrategy, Prediction } from '../types';
+import type { AccuracyHistory, AccuracyStat, ApiResp, AppNotification, DrawResult, LotteryType, ModelStrategy, Prediction } from '../types';
 
 const TOKEN_KEY = 'auth_token';
 const USER_KEY = 'auth_user';
@@ -144,10 +144,14 @@ export async function fetchDraws(lotteryCode: string, page = 1): Promise<{ list:
   }
 }
 
-export async function fetchAccuracy(lotteryCode: string): Promise<{ list: AccuracyStat[]; strategies?: ModelStrategy[] }> {
+export async function fetchAccuracy(
+  lotteryCode: string
+): Promise<{ list: AccuracyStat[]; strategies?: ModelStrategy[]; history?: AccuracyHistory[]; stake_yuan?: number }> {
   try {
     const c = await client();
-    const { data } = await c.get<ApiResp<{ list: AccuracyStat[]; strategies?: ModelStrategy[] }>>('/api/v1/accuracy', {
+    const { data } = await c.get<
+      ApiResp<{ list: AccuracyStat[]; strategies?: ModelStrategy[]; history?: AccuracyHistory[]; stake_yuan?: number }>
+    >('/api/v1/accuracy', {
       params: { lottery_code: lotteryCode, days: 30 },
     });
     if (data.code !== 0) throw new Error(data.message);

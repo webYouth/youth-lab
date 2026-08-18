@@ -29,11 +29,11 @@ type cwlResponse struct {
 }
 
 type cwlRecord struct {
-	Name        string      `json:"name"`
-	Code        string      `json:"code"`
-	Date        string      `json:"date"`
-	Red         string      `json:"red"`
-	Prizegrades []cwlPrize  `json:"prizegrades"`
+	Name        string     `json:"name"`
+	Code        string     `json:"code"`
+	Date        string     `json:"date"`
+	Red         string     `json:"red"`
+	Prizegrades []cwlPrize `json:"prizegrades"`
 }
 
 type cwlPrize struct {

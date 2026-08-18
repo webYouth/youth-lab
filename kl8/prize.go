@@ -9,9 +9,9 @@ import (
 // Fixed prize table based on current China Welfare Lottery 快乐8 structure
 // (aligned with cwl.gov.cn prizegrades fixed awards).
 // Floating awards:
-// - 选十中十: floating, cap 5,000,000
-// - 选九中九: treated as fixed 300,000 in game rules text; if API returns a
-//   positive typemoney for the issue, that value is preferred.
+//   - 选十中十: floating, cap 5,000,000
+//   - 选九中九: treated as fixed 300,000 in game rules text; if API returns a
+//     positive typemoney for the issue, that value is preferred.
 var fixedPrizeTable = map[string]map[int]float64{
 	"选十": {
 		10: -1, // floating

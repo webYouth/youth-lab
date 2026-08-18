@@ -17,9 +17,33 @@ type DrawResult struct {
 	ID          int64           `json:"id"`
 	LotteryCode string          `json:"lottery_code"`
 	Issue       string          `json:"issue"`
-	DrawDate    time.Time       `json:"draw_date"`
+	DrawDate    time.Time       `json:"-"`
+	DrawDateStr string          `json:"draw_date"`
 	Result      json.RawMessage `json:"result"`
 	RawData     json.RawMessage `json:"raw_data,omitempty"`
+}
+
+func (d DrawResult) MarshalJSON() ([]byte, error) {
+	type rest struct {
+		ID          int64           `json:"id"`
+		LotteryCode string          `json:"lottery_code"`
+		Issue       string          `json:"issue"`
+		DrawDate    string          `json:"draw_date"`
+		Result      json.RawMessage `json:"result"`
+		RawData     json.RawMessage `json:"raw_data,omitempty"`
+	}
+	date := d.DrawDateStr
+	if date == "" && !d.DrawDate.IsZero() {
+		date = d.DrawDate.UTC().Format("2006-01-02")
+	}
+	return json.Marshal(rest{
+		ID:          d.ID,
+		LotteryCode: d.LotteryCode,
+		Issue:       d.Issue,
+		DrawDate:    date,
+		Result:      d.Result,
+		RawData:     d.RawData,
+	})
 }
 
 type ModelConfig struct {
@@ -36,30 +60,37 @@ type ModelConfig struct {
 }
 
 type Prediction struct {
-	ID                int64           `json:"id"`
-	LotteryCode       string          `json:"lottery_code"`
-	Issue             string          `json:"issue"`
-	PredictDate       time.Time       `json:"predict_date"`
-	ModelCode         string          `json:"model_code"`
-	PredictedNumbers  json.RawMessage `json:"predicted_numbers"`
-	Confidence        float64         `json:"confidence"`
-	Reason            string          `json:"reason,omitempty"`
-	RawResponse       string          `json:"-"` // 仅内部落库，不对外返回
-	FinalFlag         bool            `json:"final_flag"`
-	Success           bool            `json:"success"`
-	ErrorMessage      string          `json:"error_message,omitempty"`
-	CreatedAt         time.Time       `json:"created_at"`
+	ID               int64           `json:"id"`
+	LotteryCode      string          `json:"lottery_code"`
+	Issue            string          `json:"issue"`
+	PredictDate      time.Time       `json:"predict_date"`
+	ModelCode        string          `json:"model_code"`
+	PredictedNumbers json.RawMessage `json:"predicted_numbers"`
+	Confidence       float64         `json:"confidence"`
+	Reason           string          `json:"reason,omitempty"`
+	RawResponse      string          `json:"-"` // 仅内部落库，不对外返回
+	FinalFlag        bool            `json:"final_flag"`
+	Success          bool            `json:"success"`
+	ErrorMessage     string          `json:"error_message,omitempty"`
+	CreatedAt        time.Time       `json:"created_at"`
 }
 
 type PredictionResult struct {
-	ID              int64           `json:"id"`
-	PredictionID    int64           `json:"prediction_id"`
-	DrawResultID    int64           `json:"draw_result_id"`
-	MatchedNumbers  json.RawMessage `json:"matched_numbers"`
-	HitCount        int             `json:"hit_count"`
-	HitRate         float64         `json:"hit_rate"`
-	Level           string          `json:"level,omitempty"`
-	IsWin           bool            `json:"is_win"`
+	ID             int64           `json:"id"`
+	PredictionID   int64           `json:"prediction_id"`
+	DrawResultID   int64           `json:"draw_result_id"`
+	MatchedNumbers json.RawMessage `json:"matched_numbers"`
+	HitCount       int             `json:"hit_count"`
+	HitRate        float64         `json:"hit_rate"`
+	Level          string          `json:"level,omitempty"`
+	IsWin          bool            `json:"is_win"`
+	StakeYuan      float64         `json:"stake_yuan"`
+	PrizeYuan      float64         `json:"prize_yuan"`
+	ProfitYuan     float64         `json:"profit_yuan"`
+	PrizeFloating  bool            `json:"prize_floating"`
+	WeightYuan     float64         `json:"weight_yuan"`
+	WeightScore    float64         `json:"weight_score"`
+	ScoreVersion   int             `json:"score_version"`
 }
 
 type AccuracyStat struct {
@@ -67,19 +98,39 @@ type AccuracyStat struct {
 	ModelCode        string    `json:"model_code"`
 	TotalPredictions int       `json:"total_predictions"`
 	TotalHits        int       `json:"total_hits"`
+	TotalWins        int       `json:"total_wins"`
 	AvgHitRate       float64   `json:"avg_hit_rate"`
 	Last30HitRate    float64   `json:"last_30_hit_rate"`
+	TotalStake       float64   `json:"total_stake"`
+	TotalPrize       float64   `json:"total_prize"`
+	TotalProfit      float64   `json:"total_profit"`
+	Last30Wins       int       `json:"last_30_wins"`
+	Last30Profit     float64   `json:"last_30_profit"`
 	UpdatedAt        time.Time `json:"updated_at"`
 }
 
+type AccuracyHistory struct {
+	Issue         string  `json:"issue"`
+	ModelCode     string  `json:"model_code"`
+	FinalFlag     bool    `json:"final_flag"`
+	DrawDate      string  `json:"draw_date"`
+	IsWin         bool    `json:"is_win"`
+	Level         string  `json:"level"`
+	HitCount      int     `json:"hit_count"`
+	StakeYuan     float64 `json:"stake_yuan"`
+	PrizeYuan     float64 `json:"prize_yuan"`
+	ProfitYuan    float64 `json:"profit_yuan"`
+	PrizeFloating bool    `json:"prize_floating"`
+}
+
 type ModelStrategy struct {
-	ID             int64     `json:"id"`
-	LotteryCode    string    `json:"lottery_code"`
-	ModelCode      string    `json:"model_code"`
-	Weight         float64   `json:"weight"`
-	Last30HitRate  float64   `json:"last_30_hit_rate"`
-	Notes          string    `json:"notes,omitempty"`
-	CreatedAt      time.Time `json:"created_at"`
+	ID            int64     `json:"id"`
+	LotteryCode   string    `json:"lottery_code"`
+	ModelCode     string    `json:"model_code"`
+	Weight        float64   `json:"weight"`
+	Last30HitRate float64   `json:"last_30_hit_rate"`
+	Notes         string    `json:"notes,omitempty"`
+	CreatedAt     time.Time `json:"created_at"`
 }
 
 // LLMPredictPayload 大模型标准返回。
@@ -87,10 +138,10 @@ type LLMPredictPayload struct {
 	Numbers     []int   `json:"numbers"`
 	BackNumbers []int   `json:"back_numbers,omitempty"`
 	Pick10      []int   `json:"pick10,omitempty"`
-	Sum         int     `json:"sum"`                    // 号码和值
-	Span        int     `json:"span"`                   // 跨度 = max-min
-	BackSum     int     `json:"back_sum,omitempty"`     // 大乐透后区和值
-	BackSpan    int     `json:"back_span,omitempty"`    // 大乐透后区跨度
+	Sum         int     `json:"sum"`                 // 号码和值
+	Span        int     `json:"span"`                // 跨度 = max-min
+	BackSum     int     `json:"back_sum,omitempty"`  // 大乐透后区和值
+	BackSpan    int     `json:"back_span,omitempty"` // 大乐透后区跨度
 	Confidence  float64 `json:"confidence"`
 	Reason      string  `json:"reason"`
 }

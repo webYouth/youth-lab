@@ -79,12 +79,14 @@ func (s *Syncer) syncSporttery(ctx context.Context, lotteryCode, gameNo string) 
 		}
 		hitKnown := false
 		for _, item := range items {
-			if latest != nil && !issueNewer(item.Issue, latest.Issue) {
-				hitKnown = true
+			if item.DrawDate.IsZero() {
 				continue
 			}
 			if err := s.Store.UpsertDraw(ctx, item); err != nil {
 				return err
+			}
+			if latest != nil && !issueNewer(item.Issue, latest.Issue) {
+				hitKnown = true
 			}
 		}
 		if latest != nil && hitKnown {
@@ -166,7 +168,7 @@ func parseSporttery(body []byte, lotteryCode string) ([]model.DrawResult, error)
 		}
 		issue := fmt.Sprint(m["lotteryDrawNum"])
 		dateStr := fmt.Sprint(m["lotteryDrawTime"])
-		drawDate, _ := time.ParseInLocation("2006-01-02", strings.Split(dateStr, " ")[0], time.Local)
+		drawDate := ParseCivilDate(dateStr)
 		resultJSON, err := sportteryResult(lotteryCode, fmt.Sprint(m["lotteryDrawResult"]))
 		if err != nil {
 			continue
@@ -229,11 +231,7 @@ func parseKL8(body []byte) ([]model.DrawResult, error) {
 	}
 	out := make([]model.DrawResult, 0, len(root.Result))
 	for _, r := range root.Result {
-		datePart := r.Date
-		if i := strings.Index(datePart, "("); i > 0 {
-			datePart = datePart[:i]
-		}
-		drawDate, _ := time.ParseInLocation("2006-01-02", datePart, time.Local)
+		drawDate := ParseCivilDate(r.Date)
 		parts := strings.Split(r.Red, ",")
 		nums := make([]int, 0, len(parts))
 		for _, p := range parts {

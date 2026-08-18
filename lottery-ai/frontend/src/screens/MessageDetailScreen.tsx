@@ -61,19 +61,31 @@ export default function MessageDetailScreen() {
           </Text>
           {n.payload ? (
             <View style={styles.payload}>
+              {n.payload.period || n.payload.issue ? (
+                <Text variant="bodyMedium">期号 {String(n.payload.period || n.payload.issue)}</Text>
+              ) : null}
               {n.payload.numbers ? (
                 <Text variant="bodyMedium">开奖号 {String(n.payload.numbers)}</Text>
               ) : null}
-              {n.payload.period || n.payload.issue ? (
-                <Text variant="bodyMedium">期号 {String(n.payload.period || n.payload.issue)}</Text>
+              {n.payload.stake != null ? (
+                <Text variant="bodyMedium">
+                  本期投入 {String(n.payload.stake)} 元 · 奖金 {String(n.payload.prize ?? n.payload.total ?? 0)} 元 · 盈亏 {String(n.payload.profit)} 元
+                </Text>
+              ) : n.payload.total != null ? (
+                <Text variant="bodyMedium">奖金合计 {String(n.payload.total)} 元</Text>
+              ) : null}
+              {n.payload.chase_days != null ? (
+                <Text variant="bodyMedium">
+                  追号 {String(n.payload.chase_days)} 期累计投入 {String(n.payload.chase_stake)} 元 · 奖金 {String(n.payload.chase_prize)} 元 · 盈亏 {String(n.payload.chase_profit)} 元
+                </Text>
+              ) : null}
+              {n.payload.lottery_code ? (
+                <Text variant="bodyMedium">彩种 {String(n.payload.lottery_code)}</Text>
               ) : null}
               {n.payload.report ? (
                 <Text variant="bodySmall" style={styles.report}>
                   {String(n.payload.report)}
                 </Text>
-              ) : null}
-              {n.payload.lottery_code ? (
-                <Text variant="bodyMedium">彩种 {String(n.payload.lottery_code)}</Text>
               ) : null}
             </View>
           ) : null}

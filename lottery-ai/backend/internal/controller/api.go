@@ -104,7 +104,14 @@ func (a *API) Accuracy(c *gin.Context) {
 		return
 	}
 	strategies, _ := a.Store.LatestStrategies(c.Request.Context(), code)
-	OK(c, gin.H{"list": list, "strategies": strategies, "days": c.DefaultQuery("days", "30")})
+	history, _ := a.Store.ListAccuracyHistory(c.Request.Context(), code, 40)
+	OK(c, gin.H{
+		"list":       list,
+		"strategies": strategies,
+		"history":    history,
+		"stake_yuan": 2,
+		"days":       c.DefaultQuery("days", "30"),
+	})
 }
 
 func (a *API) AdminSync(c *gin.Context) {
