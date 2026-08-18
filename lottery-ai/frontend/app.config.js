@@ -11,7 +11,7 @@ const apiBase = (
 module.exports = {
   name: '彩票 AI',
   slug: 'lottery-ai',
-  version: '1.0.5',
+  version: '1.0.6',
   orientation: 'portrait',
   userInterfaceStyle: 'automatic',
   icon: './assets/icon.png',
