@@ -110,6 +110,10 @@ jobs:
               cp -f kl8/tickets.example.yaml kl8/tickets.yaml
               echo "created kl8/tickets.yaml from example; please update daily numbers"
             fi
+            if [ ! -f kl8/ledger.json ]; then
+              printf '{}\n' > kl8/ledger.json
+            fi
+            chmod 666 kl8/ledger.json || true
 
             SMTP_HOST_VALUE="${SMTP_HOST:-smtp.qq.com}"
             SMTP_PORT_VALUE="${SMTP_PORT:-465}"

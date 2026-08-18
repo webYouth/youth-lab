@@ -10,7 +10,7 @@ import (
 	"youthlab/lottery-ai/internal/consts"
 )
 
-// Recalibrate 根据历史命中率改写各模型权重，供下一次投票使用。
+// Recalibrate 根据近30天加权准确率改写各模型投票权重。
 func (s *Service) Recalibrate(ctx context.Context, lotteryCode string) error {
 	stats, err := s.Store.GetAccuracy(ctx, lotteryCode)
 	if err != nil {
@@ -22,7 +22,7 @@ func (s *Service) Recalibrate(ctx context.Context, lotteryCode string) error {
 	hits, _ := s.Store.RecentFinalHits(ctx, lotteryCode, 5)
 	var hitNotes []string
 	for _, h := range hits {
-		hitNotes = append(hitNotes, fmt.Sprintf("命中%d(%.0f%%/%s)", h.HitCount, h.HitRate*100, h.Level))
+		hitNotes = append(hitNotes, fmt.Sprintf("%s奖%.0f元", h.Level, h.PrizeYuan))
 	}
 	recent := "尚无开奖回测"
 	if len(hitNotes) > 0 {
@@ -39,7 +39,7 @@ func (s *Service) Recalibrate(ctx context.Context, lotteryCode string) error {
 		}
 		w = math.Max(0.25, math.Min(2.5, w))
 		w = math.Round(w*100) / 100
-		note := fmt.Sprintf("近30天命中率 %.1f%%，投票权重调整为 %.2f。近期回测：%s", a.Last30HitRate*100, w, recent)
+		note := fmt.Sprintf("近30天加权准确率 %.1f%%，累计盈亏 %.0f 元，投票权重 %.2f。近期回测：%s", a.Last30HitRate*100, a.TotalProfit, w, recent)
 		if err := s.Store.UpdateModelWeight(ctx, a.ModelCode, w); err != nil {
 			return err
 		}
@@ -59,7 +59,7 @@ func (s *Service) strategyPrompt(ctx context.Context, lotteryCode string) string
 	var b strings.Builder
 	b.WriteString("根据历史预测回测，当前投票策略：")
 	for _, st := range list {
-		fmt.Fprintf(&b, " %s 权重%.2f(近30天%.1f%%)；", st.ModelCode, st.Weight, st.Last30HitRate*100)
+		fmt.Fprintf(&b, " %s 权重%.2f(近30天加权%.1f%%)；", st.ModelCode, st.Weight, st.Last30HitRate*100)
 	}
 	if list[0].Notes != "" {
 		b.WriteString(" ")

@@ -44,11 +44,14 @@ func (s *Scheduler) Start() {
 	_, _ = s.cron.AddFunc("0 40 8 * * *", func() { s.runPredictOne(consts.LotteryDLT) })
 
 	// 开奖后按顺序同步并评估
-	_, _ = s.cron.AddFunc("0 20 21 * * *", func() { s.runSyncOne(consts.LotteryKL8) }) // 快乐8 21:15 后
-	_, _ = s.cron.AddFunc("0 35 21 * * *", func() { s.runSyncOne(consts.LotteryP3) })  // 排列三 21:30 后
+	_, _ = s.cron.AddFunc("0 20 21 * * *", func() { s.runSyncOne(consts.LotteryKL8) })     // 快乐8 21:15 后
+	_, _ = s.cron.AddFunc("0 35 21 * * *", func() { s.runSyncOne(consts.LotteryP3) })      // 排列三 21:30 后
 	_, _ = s.cron.AddFunc("0 40 21 * * 1,3,6", func() { s.runSyncOne(consts.LotteryDLT) }) // 大乐透开奖日
-	_, _ = s.cron.AddFunc("0 50 21 * * *", func() { s.runSync() })                      // 兜底再拉一轮
+	_, _ = s.cron.AddFunc("0 50 21 * * *", func() { s.runSync() })                         // 兜底再拉一轮
 	_, _ = s.cron.AddFunc("0 5 22 * * *", func() { s.runEvaluate() })
+	_, _ = s.cron.AddFunc("0 20 22 * * *", func() { s.runSync() }) // 官网晚公布时补拉
+	_, _ = s.cron.AddFunc("0 35 22 * * *", func() { s.runEvaluate() })
+	_, _ = s.cron.AddFunc("0 15 23 * * *", func() { s.runSync(); s.runEvaluate() })
 
 	s.cron.Start()
 	log.Printf("[scheduler] started (Asia/Shanghai) predict=KL8@08:10 P3@08:25 DLT@08:40; draws KL8 21:15 / P3 21:30 / DLT MonWedSat")

@@ -29,6 +29,7 @@ go.work.sum
 
 # Happy8 personal tickets (keep private on ECS)
 kl8/tickets.yaml
+kl8/ledger.json
 
 # Local codegen tools
 .tools/

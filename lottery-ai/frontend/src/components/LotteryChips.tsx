@@ -1,6 +1,6 @@
 import React from 'react';
 import { StyleSheet, View } from 'react-native';
-import { Chip } from 'react-native-paper';
+import { Chip, useTheme } from 'react-native-paper';
 import { LOTTERY_LABELS } from '../theme';
 
 type Props = {
@@ -12,20 +12,37 @@ type Props = {
 const DEFAULTS = ['DLT', 'P3', 'KL8'].map((code) => ({ code, name: LOTTERY_LABELS[code] }));
 
 export default function LotteryChips({ value, options = DEFAULTS, onChange }: Props) {
+  const theme = useTheme();
   return (
     <View style={styles.row}>
-      {options.map((t) => (
-        <Chip
-          key={t.code}
-          selected={value === t.code}
-          showSelectedCheck={false}
-          compact
-          onPress={() => onChange(t.code)}
-          style={styles.chip}
-        >
-          {t.name || LOTTERY_LABELS[t.code] || t.code}
-        </Chip>
-      ))}
+      {options.map((t) => {
+        const active = value === t.code;
+        return (
+          <Chip
+            key={t.code}
+            selected={active}
+            showSelectedCheck={false}
+            compact
+            mode={active ? 'flat' : 'outlined'}
+            onPress={() => onChange(t.code)}
+            style={[
+              styles.chip,
+              active
+                ? { backgroundColor: theme.colors.primary }
+                : {
+                    backgroundColor: 'transparent',
+                    borderColor: theme.colors.outline,
+                  },
+            ]}
+            textStyle={{
+              color: active ? theme.colors.onPrimary : theme.colors.onSurfaceVariant,
+              fontWeight: active ? '700' : '500',
+            }}
+          >
+            {t.name || LOTTERY_LABELS[t.code] || t.code}
+          </Chip>
+        );
+      })}
     </View>
   );
 }
